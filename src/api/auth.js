@@ -10,5 +10,6 @@ export async function loginRequest(email, password) {
     name: data.name,
     email: data.email,
     role: data.role,
+    permisos: data.permisos ?? null,
   };
 }

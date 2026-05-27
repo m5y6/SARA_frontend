@@ -5,6 +5,7 @@ export function ProfileTab({ authSession }) {
         { label: 'Correo', value: authSession.email },
         { label: 'Rol', value: authSession.role },
         { label: 'ID', value: authSession.userId },
+        { label: 'Permisos', value: authSession.permisos ? JSON.stringify(authSession.permisos) : 'Sin permisos adicionales' },
       ]
     : [
         { label: 'Usuario', value: 'Invitado' },
@@ -35,7 +36,7 @@ export function ProfileTab({ authSession }) {
       <div className="profile-note">
         <h3>Uso esperado</h3>
         <p>
-          El token se guarda en localStorage y se reutiliza automáticamente para <strong>/ask</strong> y <strong>/upload-txt</strong>.
+          El token se guarda en localStorage y se reutiliza automáticamente para <strong>/ask</strong>, <strong>/upload-txt</strong> y las rutas de admin.
         </p>
       </div>
     </section>

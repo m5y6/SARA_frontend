@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { healthCheck, normalizeText } from '../../api/assistant';
+import { healthCheck, normalizeText } from '../../api/system';
 
 export function DashboardTab() {
   const [health, setHealth] = useState(null);
@@ -10,8 +10,7 @@ export function DashboardTab() {
   const handleHealthCheck = async () => {
     setError('');
     try {
-      const data = await healthCheck();
-      setHealth(data);
+      setHealth(await healthCheck());
     } catch (requestError) {
       setError(requestError?.response?.data?.detail ?? 'No se pudo consultar health.');
     }
@@ -31,23 +30,23 @@ export function DashboardTab() {
     <section className="panel-card">
       <header className="panel-head">
         <div>
-          <p className="panel-kicker">Dashboard</p>
+          <p className="panel-kicker">Sistema</p>
           <h2>Estado del sistema y normalización</h2>
         </div>
       </header>
 
       <div className="metrics-grid">
         <article className="metric-card">
-          <span className="metric-value">98%</span>
-          <span className="metric-label">Precisión RAG</span>
+          <span className="metric-value">/health</span>
+          <span className="metric-label">Chequeo del backend</span>
         </article>
         <article className="metric-card">
-          <span className="metric-value">1.2s</span>
-          <span className="metric-label">Latencia estimada</span>
+          <span className="metric-value">/normalize-text</span>
+          <span className="metric-label">Limpieza de texto</span>
         </article>
         <article className="metric-card">
-          <span className="metric-value">0%</span>
-          <span className="metric-label">Tasa de alucinación</span>
+          <span className="metric-value">API</span>
+          <span className="metric-label">Base local</span>
         </article>
       </div>
 
@@ -57,9 +56,7 @@ export function DashboardTab() {
           <button type="button" className="primary-button" onClick={handleHealthCheck}>
             Consultar health
           </button>
-          {health ? (
-            <pre className="json-box">{JSON.stringify(health, null, 2)}</pre>
-          ) : null}
+          {health ? <pre className="json-box">{JSON.stringify(health, null, 2)}</pre> : null}
         </div>
 
         <div className="action-card">

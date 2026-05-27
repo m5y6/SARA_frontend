@@ -53,6 +53,13 @@ button {
   margin: 24px auto 40px;
 }
 
+.app-shell-auth {
+  min-height: 100vh;
+  display: grid;
+  align-content: center;
+  gap: 18px;
+}
+
 .app-header {
   display: flex;
   justify-content: space-between;
@@ -63,6 +70,10 @@ button {
   background: linear-gradient(135deg, var(--blue-950), var(--blue-700));
   color: #fff;
   box-shadow: var(--shadow);
+}
+
+.app-header-auth {
+  justify-content: flex-start;
 }
 
 .brand-block {
@@ -147,6 +158,15 @@ button {
 
 .tab-stage {
   padding-top: 14px;
+}
+
+.auth-stage {
+  display: grid;
+  place-items: center;
+}
+
+.panel-login {
+  width: min(100%, 520px);
 }
 
 .panel-card {
@@ -287,10 +307,10 @@ button {
   gap: 14px;
 }
 
-.field-row {
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 12px;
+.button-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
 }
 
 .chat-input-label,
@@ -336,12 +356,6 @@ button {
 .dashboard-grid textarea,
 .chat-input-label textarea {
   resize: vertical;
-}
-
-.range-value {
-  color: var(--blue-800);
-  font-size: 0.82rem;
-  font-weight: 800;
 }
 
 .primary-button,
@@ -397,11 +411,48 @@ button {
   border: 1px solid rgba(17, 63, 122, 0.1);
 }
 
+.profile-note-copy,
+.status-copy {
+  margin: 0;
+  color: var(--muted);
+}
+
 .session-summary,
 .profile-note,
 .result-card,
 .action-card {
   padding: 16px;
+}
+
+.admin-grid {
+  align-items: start;
+}
+
+.list-stack {
+  display: grid;
+  gap: 10px;
+}
+
+.list-card {
+  display: grid;
+  gap: 4px;
+  padding: 12px 14px;
+  border-radius: 14px;
+  background: rgba(232, 241, 255, 0.62);
+  border: 1px solid rgba(17, 63, 122, 0.08);
+}
+
+.list-card strong {
+  color: var(--blue-800);
+}
+
+.list-card span,
+.list-card small {
+  color: var(--text);
+}
+
+.admin-user-form {
+  margin-top: 4px;
 }
 
 .profile-grid {
@@ -490,8 +541,8 @@ button {
 @media (max-width: 960px) {
   .app-header,
   .panel-head,
-  .field-row,
   .dashboard-grid,
+  .admin-grid,
   .metrics-grid,
   .profile-grid {
     grid-template-columns: 1fr;

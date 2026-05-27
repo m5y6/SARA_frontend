@@ -17,9 +17,7 @@ function buildInitialMessages(authSession) {
 export function ChatTab({ authSession }) {
   const initialMessages = useMemo(() => buildInitialMessages(authSession), [authSession]);
   const [messages, setMessages] = useState(initialMessages);
-  const [question, setQuestion] = useState('');
-  const [sessionId, setSessionId] = useState('');
-  const [temperature, setTemperature] = useState(0.3);
+  const [message, setMessage] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [error, setError] = useState('');
 
@@ -29,8 +27,8 @@ export function ChatTab({ authSession }) {
 
   const handleSubmit = async (event) => {
     event.preventDefault();
-    const trimmedQuestion = question.trim();
-    if (!trimmedQuestion) {
+    const trimmedMessage = message.trim();
+    if (!trimmedMessage) {
       return;
     }
 
@@ -40,18 +38,14 @@ export function ChatTab({ authSession }) {
     const userMessage = {
       id: crypto.randomUUID(),
       role: 'user',
-      content: trimmedQuestion,
+      content: trimmedMessage,
     };
 
     setMessages((currentMessages) => [...currentMessages, userMessage]);
-    setQuestion('');
+    setMessage('');
 
     try {
-      const data = await askQuestion({
-        question: trimmedQuestion,
-        temperature,
-        sesionId: sessionId,
-      });
+      const data = await askQuestion({ question: trimmedMessage });
 
       setMessages((currentMessages) => [
         ...currentMessages,
@@ -107,37 +101,13 @@ export function ChatTab({ authSession }) {
           </div>
 
           <form className="chat-composer" onSubmit={handleSubmit}>
-            <div className="field-row">
-              <label>
-                Sesión opcional
-                <input
-                  type="number"
-                  placeholder="12"
-                  value={sessionId}
-                  onChange={(event) => setSessionId(event.target.value)}
-                />
-              </label>
-              <label>
-                Temperature
-                <input
-                  type="range"
-                  min="0"
-                  max="1"
-                  step="0.1"
-                  value={temperature}
-                  onChange={(event) => setTemperature(Number(event.target.value))}
-                />
-                <span className="range-value">{temperature.toFixed(1)}</span>
-              </label>
-            </div>
-
             <label className="chat-input-label">
-              Pregunta
+              Escribe tu mensaje
               <textarea
-                rows="3"
-                placeholder="¿Cuál es el horario de atención?"
-                value={question}
-                onChange={(event) => setQuestion(event.target.value)}
+                rows="4"
+                placeholder="Escribe aquí tu consulta..."
+                value={message}
+                onChange={(event) => setMessage(event.target.value)}
               />
             </label>
 
