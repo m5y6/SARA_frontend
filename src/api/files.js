@@ -13,3 +13,21 @@ export async function uploadFile({ file, fileName }) {
 
   return data;
 }
+
+export async function listDocuments() {
+  const { data } = await api.get('/documents');
+  return data;
+}
+
+export async function deleteDocument({ s3Key }) {
+  const { data } = await api.delete('/documents', {
+    data: {
+      s3_key: s3Key,
+    },
+    headers: {
+      'Content-Type': 'application/json',
+    },
+  });
+
+  return data;
+}

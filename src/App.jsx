@@ -19,7 +19,7 @@ function buildTabs(authSession) {
     { id: 'chat', label: 'Chat Asistente' },
     {
       id: 'upload',
-      label: 'Subir TXT',
+      label: 'Subir Documento',
       hidden: !(isAdminSession(authSession) || hasPermission(authSession?.permisos, 'upload')),
     },
     {

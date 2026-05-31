@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import {
   getUserById,
   listRoleAuditLog,
@@ -16,8 +16,15 @@ const emptyUserForm = {
   role_name: '',
 };
 
+const adminSections = [
+  { id: 'usuarios', label: 'Usuarios' },
+  { id: 'roles', label: 'Roles' },
+  { id: 'auditoria', label: 'Auditoría' },
+];
+
 export function AdminTab({ authSession }) {
   const canAdmin = isAdminSession(authSession);
+  const [activeSection, setActiveSection] = useState('usuarios');
   const [roles, setRoles] = useState([]);
   const [users, setUsers] = useState([]);
   const [auditLog, setAuditLog] = useState([]);
@@ -34,12 +41,19 @@ export function AdminTab({ authSession }) {
     setError('');
     setStatus('');
     try {
-      setRoles(await listRoles());
+      const loadedRoles = await listRoles();
+      setRoles(loadedRoles);
       setStatus('Roles cargados.');
     } catch (requestError) {
       setError(requestError?.response?.data?.detail ?? 'No se pudieron cargar los roles.');
     }
   };
+
+  useEffect(() => {
+    if (activeSection === 'usuarios' && canAdmin && roles.length === 0) {
+      handleLoadRoles();
+    }
+  }, [activeSection, canAdmin, roles.length]);
 
   const handleLoadUsers = async () => {
     setError('');
@@ -152,53 +166,23 @@ export function AdminTab({ authSession }) {
 
       {!canAdmin ? <p className="form-error">Este módulo requiere rol admin o permiso admin.</p> : null}
 
-      <div className="dashboard-grid admin-grid">
-        <div className="action-card">
-          <h3>Roles</h3>
-          <div className="button-row">
-            <button type="button" className="primary-button" onClick={handleLoadRoles} disabled={!canAdmin || isSaving}>
-              Cargar roles
-            </button>
-            <button type="button" className="ghost-button" onClick={handleLoadAudit} disabled={!canAdmin || isSaving}>
-              Ver auditoría
-            </button>
-          </div>
-          <label>
-            ID de rol
-            <input
-              type="number"
-              value={selectedRoleId}
-              onChange={(event) => setSelectedRoleId(event.target.value)}
-              placeholder="7"
-            />
-          </label>
-          <label>
-            Permisos JSON
-            <textarea
-              rows="4"
-              value={rolePermisosInput}
-              onChange={(event) => setRolePermisosInput(event.target.value)}
-              placeholder='{"upload": true}'
-            />
-          </label>
-          <button type="button" className="primary-button" onClick={handleUpdateRolePermisos} disabled={!canAdmin || isSaving}>
-            Actualizar permisos del rol
+      <nav className="section-nav" aria-label="Secciones de administración">
+        {adminSections.map((section) => (
+          <button
+            key={section.id}
+            type="button"
+            className={`section-nav-link${activeSection === section.id ? ' is-active' : ''}`}
+            onClick={() => setActiveSection(section.id)}
+          >
+            {section.label}
           </button>
-          {roles.length > 0 ? (
-            <div className="list-stack">
-              {roles.map((role) => (
-                <article key={role.id} className="list-card">
-                  <strong>{role.nombre}</strong>
-                  <span>ID {role.id}</span>
-                  <small>{JSON.stringify(role.permisos ?? null)}</small>
-                </article>
-              ))}
-            </div>
-          ) : null}
-        </div>
+        ))}
+      </nav>
 
-        <div className="action-card">
+      {activeSection === 'usuarios' ? (
+        <div className="action-card admin-section-card">
           <h3>Usuarios</h3>
+          <p className="profile-note-copy">Consulta, edita y actualiza usuarios desde esta sección.</p>
           <div className="button-row">
             <button type="button" className="primary-button" onClick={handleLoadUsers} disabled={!canAdmin || isSaving}>
               Cargar usuarios
@@ -234,12 +218,29 @@ export function AdminTab({ authSession }) {
               />
             </label>
             <label>
-              Role ID
-              <input
-                type="number"
+              Rol
+              <select
                 value={userForm.role_id}
-                onChange={(event) => setUserForm((current) => ({ ...current, role_id: event.target.value }))}
-              />
+                onChange={(event) => {
+                  const nextRoleId = event.target.value;
+                  const selectedRole = roles.find((role) => String(role.id) === String(nextRoleId));
+
+                  setUserForm((current) => ({
+                    ...current,
+                    role_id: nextRoleId,
+                    role_name: selectedRole?.nombre ?? current.role_name,
+                  }));
+                }}
+                disabled={roles.length === 0}
+              >
+                <option value="">Selecciona un rol</option>
+                {roles.map((role) => (
+                  <option key={role.id} value={role.id}>
+                    {role.nombre} · ID {role.id}
+                  </option>
+                ))}
+              </select>
+              {roles.length === 0 ? <small>Primero carga los roles para poder elegir uno.</small> : null}
             </label>
             <label>
               Role name
@@ -268,9 +269,61 @@ export function AdminTab({ authSession }) {
             </div>
           ) : null}
         </div>
+      ) : null}
 
-        <div className="action-card span-2">
-          <h3>Auditoría de roles</h3>
+      {activeSection === 'roles' ? (
+        <div className="action-card admin-section-card">
+          <h3>Roles</h3>
+          <p className="profile-note-copy">Actualiza permisos y revisa la configuración por rol.</p>
+          <div className="button-row">
+            <button type="button" className="primary-button" onClick={handleLoadRoles} disabled={!canAdmin || isSaving}>
+              Cargar roles
+            </button>
+          </div>
+          <label>
+            ID de rol
+            <input
+              type="number"
+              value={selectedRoleId}
+              onChange={(event) => setSelectedRoleId(event.target.value)}
+              placeholder="7"
+            />
+          </label>
+          <label>
+            Permisos JSON
+            <textarea
+              rows="4"
+              value={rolePermisosInput}
+              onChange={(event) => setRolePermisosInput(event.target.value)}
+              placeholder='{"upload": true}'
+            />
+          </label>
+          <button type="button" className="primary-button" onClick={handleUpdateRolePermisos} disabled={!canAdmin || isSaving}>
+            Actualizar permisos del rol
+          </button>
+          {roles.length > 0 ? (
+            <div className="list-stack">
+              {roles.map((role) => (
+                <article key={role.id} className="list-card">
+                  <strong>{role.nombre}</strong>
+                  <span>ID {role.id}</span>
+                  <small>{JSON.stringify(role.permisos ?? null)}</small>
+                </article>
+              ))}
+            </div>
+          ) : null}
+        </div>
+      ) : null}
+
+      {activeSection === 'auditoria' ? (
+        <div className="action-card admin-section-card">
+          <h3>Auditoría</h3>
+          <p className="profile-note-copy">Revisa aquí los cambios aplicados sobre roles y permisos.</p>
+          <div className="button-row">
+            <button type="button" className="ghost-button" onClick={handleLoadAudit} disabled={!canAdmin || isSaving}>
+              Cargar auditoría
+            </button>
+          </div>
           {auditLog.length > 0 ? (
             <div className="list-stack">
               {auditLog.map((entry) => (
@@ -288,7 +341,7 @@ export function AdminTab({ authSession }) {
             <p className="profile-note-copy">Carga la auditoría para ver los cambios de roles y permisos.</p>
           )}
         </div>
-      </div>
+      ) : null}
 
       {status ? <p className="status-copy">{status}</p> : null}
       {error ? <p className="form-error">{error}</p> : null}
