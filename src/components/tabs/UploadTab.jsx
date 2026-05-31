@@ -67,9 +67,18 @@ function formatLastModified(value) {
   }).format(date);
 }
 
+function stripTxtExtension(value) {
+  return value.replace(/\.txt$/i, '');
+}
+
+function buildS3FileName(baseName) {
+  const normalizedBaseName = stripTxtExtension(baseName.trim());
+  return `${normalizedBaseName}.txt`;
+}
+
 export function UploadTab({ authSession }) {
   const [selectedFile, setSelectedFile] = useState(null);
-  const [fileName, setFileName] = useState('documento.txt');
+  const [fileName, setFileName] = useState('documento');
   const [result, setResult] = useState(null);
   const [error, setError] = useState('');
   const [documents, setDocuments] = useState([]);
@@ -113,15 +122,35 @@ export function UploadTab({ authSession }) {
       return;
     }
 
+    const normalizedBaseName = stripTxtExtension(fileName.trim());
+    if (!normalizedBaseName) {
+      setError('Ingresa un nombre base válido.');
+      return;
+    }
+
+    const normalizedFileName = buildS3FileName(normalizedBaseName);
+    const targetS3Key = `documents/${normalizedFileName}`;
+    const hasDuplicateName = documents.some(
+      (documentItem) =>
+        documentItem.s3_key === targetS3Key ||
+        documentItem.file_name === normalizedFileName ||
+        documentItem.s3_key.endsWith(`/${normalizedFileName}`),
+    );
+
+    if (hasDuplicateName) {
+      setError('Ya existe un documento con ese nombre en S3. Elige otro nombre antes de subir.');
+      return;
+    }
+
     setIsSubmitting(true);
     setError('');
     setResult(null);
 
     try {
-      const data = await uploadFile({ file: selectedFile, fileName });
+      const data = await uploadFile({ file: selectedFile, fileName: normalizedFileName });
       setResult(data);
       setSelectedFile(null);
-      setFileName(data?.file_name ?? 'documento.txt');
+      setFileName(stripTxtExtension(data?.file_name ?? 'documento.txt'));
       await loadDocuments();
     } catch (requestError) {
       setError(requestError?.response?.data?.detail ?? 'No se pudo subir el archivo.');
@@ -172,13 +201,14 @@ export function UploadTab({ authSession }) {
         </label>
 
         <label>
-          Nombre en S3
+          Nombre original
           <input
             type="text"
             value={fileName}
-            onChange={(event) => setFileName(event.target.value)}
-            placeholder="reglamento-2026.txt"
+            onChange={(event) => setFileName(stripTxtExtension(event.target.value))}
+            placeholder="reglamento-2026"
           />
+          <small>Se guardará automáticamente como .txt en S3.</small>
         </label>
 
         {error ? <p className="form-error span-2">{error}</p> : null}
