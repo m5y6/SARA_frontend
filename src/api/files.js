@@ -1,6 +1,6 @@
 import { api } from './client';
 
-export async function uploadTxtFile({ file, fileName }) {
+export async function uploadFile({ file, fileName }) {
   const formData = new FormData();
   formData.append('file', file);
   formData.append('file_name', fileName);

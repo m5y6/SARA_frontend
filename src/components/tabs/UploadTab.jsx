@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { uploadTxtFile } from '../../api/files';
+import { uploadFile } from '../../api/files';
 import { hasPermission, isAdminSession } from '../../lib/permissions';
 
 export function UploadTab({ authSession }) {
@@ -15,7 +15,7 @@ export function UploadTab({ authSession }) {
     event.preventDefault();
 
     if (!selectedFile) {
-      setError('Selecciona un archivo .txt.');
+      setError('Selecciona un archivo (txt, pdf, docx).');
       return;
     }
 
@@ -24,7 +24,7 @@ export function UploadTab({ authSession }) {
     setResult(null);
 
     try {
-      const data = await uploadTxtFile({ file: selectedFile, fileName });
+      const data = await uploadFile({ file: selectedFile, fileName });
       setResult(data);
     } catch (requestError) {
       setError(requestError?.response?.data?.detail ?? 'No se pudo subir el archivo.');
@@ -37,7 +37,7 @@ export function UploadTab({ authSession }) {
     <section className="panel-card">
       <header className="panel-head">
         <div>
-          <p className="panel-kicker">Carga TXT</p>
+          <p className="panel-kicker">Carga de Archivos</p>
           <h2>Normaliza y sube documentos al S3</h2>
         </div>
         <div className={`status-pill${canUpload ? ' is-success' : ''}`}>{canUpload ? 'Permiso habilitado' : 'Requiere upload/admin'}</div>
@@ -47,8 +47,12 @@ export function UploadTab({ authSession }) {
         {!canUpload ? <p className="form-error">Este endpoint requiere rol admin o permiso upload.</p> : null}
 
         <label>
-          Archivo TXT
-          <input type="file" accept=".txt,text/plain" onChange={(event) => setSelectedFile(event.target.files?.[0] ?? null)} />
+          Archivo
+          <input
+            type="file"
+            accept=".txt,.pdf,.docx,application/pdf,application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+            onChange={(event) => setSelectedFile(event.target.files?.[0] ?? null)}
+          />
         </label>
 
         <label>
@@ -64,7 +68,7 @@ export function UploadTab({ authSession }) {
         {error ? <p className="form-error span-2">{error}</p> : null}
 
         <button type="submit" className="primary-button span-2" disabled={isSubmitting || !canUpload}>
-          {isSubmitting ? 'Subiendo...' : 'Subir TXT a S3'}
+          {isSubmitting ? 'Subiendo...' : 'Subir archivo a S3'}
         </button>
       </form>
 

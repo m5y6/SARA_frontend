@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState, startTransition } from 'react';
 import { clearAuthSession, getStoredAuthSession, setStoredAuthSession } from './lib/authStorage';
 import { loginRequest } from './api/auth';
+import { healthCheck } from './api/system';
 import { TabNav } from './components/TabNav';
 import { ChatTab } from './components/tabs/ChatTab';
 import { LoginTab } from './components/tabs/LoginTab';
@@ -10,6 +11,8 @@ import { RatingTab } from './components/tabs/RatingTab';
 import { AdminTab } from './components/tabs/AdminTab';
 import { DashboardTab } from './components/tabs/DashboardTab';
 import { hasPermission, isAdminSession } from './lib/permissions';
+
+const AUTH_INVALIDATED_EVENT = 'sara:auth-invalidated';
 
 function buildTabs(authSession) {
   return [
@@ -34,7 +37,15 @@ export default function App() {
   const storedSession = useMemo(() => getStoredAuthSession(), []);
   const [activeTab, setActiveTab] = useState('chat');
   const [authSession, setAuthSession] = useState(storedSession);
+  const [isSessionVerifying, setIsSessionVerifying] = useState(Boolean(storedSession));
   const tabs = useMemo(() => buildTabs(authSession), [authSession]);
+
+  function handleLogout() {
+    clearAuthSession();
+    setAuthSession(null);
+    setIsSessionVerifying(false);
+    startTransition(() => setActiveTab('chat'));
+  }
 
   useEffect(() => {
     if (storedSession) {
@@ -48,6 +59,51 @@ export default function App() {
     }
   }, [activeTab, authSession, tabs]);
 
+  useEffect(() => {
+    const handleAuthInvalidated = () => {
+      handleLogout();
+    };
+
+    window.addEventListener(AUTH_INVALIDATED_EVENT, handleAuthInvalidated);
+    return () => window.removeEventListener(AUTH_INVALIDATED_EVENT, handleAuthInvalidated);
+  }, []);
+
+  useEffect(() => {
+    let isCancelled = false;
+
+    async function verifyStoredSession() {
+      if (!storedSession) {
+        setIsSessionVerifying(false);
+        return;
+      }
+
+      try {
+        await healthCheck();
+        if (!isCancelled) {
+          setIsSessionVerifying(false);
+        }
+      } catch (requestError) {
+        const status = requestError?.response?.status;
+        if (status === 401 || status === 403) {
+          if (!isCancelled) {
+            handleLogout();
+          }
+          return;
+        }
+
+        if (!isCancelled) {
+          setIsSessionVerifying(false);
+        }
+      }
+    }
+
+    verifyStoredSession();
+
+    return () => {
+      isCancelled = true;
+    };
+  }, [handleLogout, storedSession]);
+
   const handleLogin = async ({ email, password }) => {
     const session = await loginRequest(email, password);
     setStoredAuthSession(session);
@@ -56,11 +112,33 @@ export default function App() {
     return session;
   };
 
-  const handleLogout = () => {
-    clearAuthSession();
-    setAuthSession(null);
-    startTransition(() => setActiveTab('chat'));
-  };
+  if (isSessionVerifying) {
+    return (
+      <div className="app-shell app-shell-auth">
+        <header className="app-header app-header-auth">
+          <div className="brand-block">
+            <div className="brand-mark">S</div>
+            <div>
+              <h1>SARA</h1>
+              <p>Asistente Inteligente Duoc UC</p>
+            </div>
+          </div>
+        </header>
+
+        <main className="tab-stage auth-stage">
+          <section className="panel-card panel-login">
+            <header className="panel-head">
+              <div>
+                <p className="panel-kicker">Verificando sesión</p>
+                <h2>Comprobando acceso con el backend</h2>
+              </div>
+            </header>
+            <p className="profile-note-copy">Estamos validando el token guardado. Si ya no sirve, volverás al login.</p>
+          </section>
+        </main>
+      </div>
+    );
+  }
 
   if (!authSession) {
     return (
