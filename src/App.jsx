@@ -170,11 +170,16 @@ export default function App() {
             <p>Asistente Inteligente Duoc UC</p>
           </div>
         </div>
-        <div className="user-chip">
-          <span className="user-chip-label">Sesión</span>
-          <strong>{authSession?.name ?? 'Invitado'}</strong>
-          <span>{authSession?.role ?? 'Sin acceso'}</span>
-          {authSession?.permisos ? <span>{JSON.stringify(authSession.permisos)}</span> : null}
+        <div className="user-actions" style={{ display: 'flex', gap: '16px', alignItems: 'center' }}>
+          <div className="user-chip">
+            <span className="user-chip-label">Sesión</span>
+            <strong>{authSession?.name ?? 'Invitado'}</strong>
+            <span>{authSession?.role ?? 'Sin acceso'}</span>
+            {authSession?.permisos ? <span>{JSON.stringify(authSession.permisos)}</span> : null}
+          </div>
+          <button className="button-subtle button-logout" onClick={handleLogout}>
+            Cerrar sesión
+          </button>
         </div>
       </header>
 

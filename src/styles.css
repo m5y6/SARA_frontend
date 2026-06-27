@@ -428,6 +428,24 @@ button {
   background: rgba(255, 255, 255, 0.92);
 }
 
+.button-subtle {
+  background: transparent;
+  color: #fff;
+  border: 1px solid rgba(255, 255, 255, 0.24);
+  backdrop-filter: blur(12px);
+  padding: 10px 14px; /* Adjusted padding */
+  font-size: 0.86rem; /* Slightly larger font size */
+  white-space: nowrap; /* Prevent text wrapping */
+  height: 44px; /* Fixed height */
+}
+
+.button-subtle:hover {
+  background: rgba(255, 255, 255, 0.08);
+}
+
+.button-logout {
+}
+
 .form-error {
   margin: 0;
   color: var(--red-500);
