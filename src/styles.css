@@ -599,6 +599,21 @@ button {
   color: var(--blue-950);
 }
 
+@keyframes spinner-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+.chat-bubble.is-loading .spinner {
+  animation: spinner-spin 1s linear infinite;
+  border: 4px solid rgba(17, 63, 122, 0.1);
+  border-top-color: var(--blue-700);
+  border-radius: 50%;
+  width: 24px;
+  height: 24px;
+}
+
 @media (max-width: 960px) {
   .app-header,
   .panel-head,
@@ -638,4 +653,24 @@ button {
   .chat-bubble {
     max-width: 100%;
   }
+}
+
+.chat-message-content p {
+    margin-bottom: 12px;
+    line-height: 1.6;
+}
+.chat-message-content strong {
+    font-weight: 700;
+    color: #1a1a1a; /* O el color principal de tu app */
+}
+.chat-message-content ul, .chat-message-content ol {
+    margin-left: 20px;
+    margin-bottom: 12px;
+}
+.chat-message-content li {
+    margin-bottom: 6px;
+    list-style-type: disc; /* Para ul */
+}
+.chat-message-content ol li {
+    list-style-type: decimal; /* Para ol */
 }
