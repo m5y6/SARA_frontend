@@ -4,19 +4,23 @@ export function LoginTab({ onLogin, authSession, onLogout }) {
   const [email, setEmail] = useState('admin@correo.com');
   const [password, setPassword] = useState('123456');
   const [error, setError] = useState('');
-  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [isLoading, setIsLoading] = useState(false);
 
   const handleSubmit = async (event) => {
     event.preventDefault();
-    setIsSubmitting(true);
+    if (!email || !password) {
+      setError('El correo y la contraseña son obligatorios.');
+      return;
+    }
+    setIsLoading(true);
     setError('');
 
     try {
       await onLogin({ email, password });
     } catch (requestError) {
-      setError(requestError?.response?.data?.detail ?? 'No se pudo iniciar sesión.');
+      setError(requestError?.response?.data?.detail ?? 'No se pudo iniciar sesión. Revisa tus credenciales.');
     } finally {
-      setIsSubmitting(false);
+      setIsLoading(false);
     }
   };
 
@@ -37,17 +41,31 @@ export function LoginTab({ onLogin, authSession, onLogout }) {
       <form className="form-grid login-form" onSubmit={handleSubmit}>
         <label>
           Correo
-          <input type="email" value={email} onChange={(event) => setEmail(event.target.value)} />
+          <input
+            type="email"
+            value={email}
+            onChange={(event) => setEmail(event.target.value)}
+            disabled={isLoading}
+            required
+            aria-label="Correo"
+          />
         </label>
         <label>
           Contraseña
-          <input type="password" value={password} onChange={(event) => setPassword(event.target.value)} />
+          <input
+            type="password"
+            value={password}
+            onChange={(event) => setPassword(event.target.value)}
+            disabled={isLoading}
+            required
+            aria-label="Contraseña"
+          />
         </label>
 
         {error ? <p className="form-error span-2">{error}</p> : null}
 
-        <button type="submit" className="primary-button span-2" disabled={isSubmitting}>
-          {isSubmitting ? 'Ingresando...' : 'Iniciar sesión'}
+        <button type="submit" className="primary-button span-2" disabled={isLoading}>
+          {isLoading ? 'Ingresando...' : 'Iniciar sesión'}
         </button>
       </form>
 

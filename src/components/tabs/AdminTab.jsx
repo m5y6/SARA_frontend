@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useCallback } from 'react';
 import {
   getUserById,
   listRoleAuditLog,
@@ -22,60 +22,88 @@ const adminSections = [
   { id: 'auditoria', label: 'Auditoría' },
 ];
 
+const initialRequestState = {
+  loading: false,
+  error: null,
+  status: null,
+};
+
+const initialComponentState = {
+  users: { ...initialRequestState },
+  user: { ...initialRequestState },
+  userUpdate: { ...initialRequestState },
+  roles: { ...initialRequestState },
+  roleUpdate: { ...initialRequestState },
+  audit: { ...initialRequestState },
+};
+
 export function AdminTab({ authSession }) {
   const canAdmin = isAdminSession(authSession);
   const [activeSection, setActiveSection] = useState('usuarios');
+
   const [roles, setRoles] = useState([]);
   const [users, setUsers] = useState([]);
   const [auditLog, setAuditLog] = useState([]);
+
   const [selectedUserId, setSelectedUserId] = useState('');
   const [selectedRoleId, setSelectedRoleId] = useState('');
   const [rolePermisosInput, setRolePermisosInput] = useState('{"upload": true}');
+
   const [userForm, setUserForm] = useState(emptyUserForm);
   const [userResult, setUserResult] = useState(null);
-  const [status, setStatus] = useState('');
-  const [error, setError] = useState('');
-  const [isSaving, setIsSaving] = useState(false);
 
-  const handleLoadRoles = async () => {
-    setError('');
-    setStatus('');
-    try {
-      const loadedRoles = await listRoles();
-      setRoles(loadedRoles);
-      setStatus('Roles cargados.');
-    } catch (requestError) {
-      setError(requestError?.response?.data?.detail ?? 'No se pudieron cargar los roles.');
-    }
+  const [requests, setRequests] = useState(initialComponentState);
+
+  const setRequestState = (req, loading, error, status) => {
+    setRequests((prev) => ({ ...prev, [req]: { loading, error, status } }));
   };
+
+  const handleApiCall = useCallback(async (reqName, apiFn, ...args) => {
+    setRequestState(reqName, true, null, null);
+    try {
+      const result = await apiFn(...args);
+      setRequestState(reqName, false, null, 'Operación exitosa.');
+      return result;
+    } catch (error) {
+      const errorMessage = error?.response?.data?.detail ?? 'Ocurrió un error en la solicitud.';
+      setRequestState(reqName, false, errorMessage, null);
+      throw error;
+    }
+  }, []);
+
+  const handleLoadRoles = useCallback(async () => {
+    try {
+      const loadedRoles = await handleApiCall('roles', listRoles);
+      setRoles(loadedRoles);
+    } catch (error) {
+      // Error is handled by handleApiCall
+    }
+  }, [handleApiCall]);
 
   useEffect(() => {
-    if (activeSection === 'usuarios' && canAdmin && roles.length === 0) {
-      handleLoadRoles();
+    if (activeSection === 'roles' || (activeSection === 'usuarios' && canAdmin)) {
+      if (roles.length === 0) {
+        handleLoadRoles();
+      }
     }
-  }, [activeSection, canAdmin, roles.length]);
+  }, [activeSection, canAdmin, roles.length, handleLoadRoles]);
 
-  const handleLoadUsers = async () => {
-    setError('');
-    setStatus('');
+  const handleLoadUsers = useCallback(async () => {
     try {
-      setUsers(await listUsers());
-      setStatus('Usuarios cargados.');
-    } catch (requestError) {
-      setError(requestError?.response?.data?.detail ?? 'No se pudieron cargar los usuarios.');
+      const loadedUsers = await handleApiCall('users', listUsers);
+      setUsers(loadedUsers);
+    } catch (error) {
+      // Error is handled by handleApiCall
     }
-  };
+  }, [handleApiCall]);
 
-  const handleLoadUser = async () => {
+  const handleLoadUser = useCallback(async () => {
     if (!selectedUserId) {
-      setError('Ingresa un ID de usuario.');
+      setRequestState('user', false, 'Ingresa un ID de usuario.', null);
       return;
     }
-
-    setError('');
-    setStatus('');
     try {
-      const data = await getUserById(selectedUserId);
+      const data = await handleApiCall('user', getUserById, selectedUserId);
       setUserResult(data);
       setUserForm({
         nombre: data.nombre ?? '',
@@ -83,76 +111,64 @@ export function AdminTab({ authSession }) {
         role_id: data.rol_id ?? '',
         role_name: data.role_name ?? '',
       });
-      setStatus('Usuario cargado.');
-    } catch (requestError) {
-      setError(requestError?.response?.data?.detail ?? 'No se pudo cargar el usuario.');
+    } catch (error) {
+      // Error is handled by handleApiCall
     }
-  };
+  }, [handleApiCall, selectedUserId]);
 
-  const handleUpdateUser = async (event) => {
-    event.preventDefault();
-    if (!selectedUserId) {
-      setError('Ingresa un ID de usuario.');
-      return;
-    }
+  const handleUpdateUser = useCallback(
+    async (event) => {
+      event.preventDefault();
+      if (!selectedUserId) {
+        setRequestState('userUpdate', false, 'Ingresa un ID de usuario.', null);
+        return;
+      }
 
-    setIsSaving(true);
-    setError('');
-    setStatus('');
+      const payload = {};
+      if (userForm.nombre.trim()) payload.nombre = userForm.nombre.trim();
+      if (userForm.email.trim()) payload.email = userForm.email.trim();
+      if (userForm.role_id !== '') payload.role_id = Number(userForm.role_id);
+      if (userForm.role_name.trim()) payload.role_name = userForm.role_name.trim();
 
-    const payload = {};
-    if (userForm.nombre.trim()) payload.nombre = userForm.nombre.trim();
-    if (userForm.email.trim()) payload.email = userForm.email.trim();
-    if (userForm.role_id !== '') payload.role_id = Number(userForm.role_id);
-    if (userForm.role_name.trim()) payload.role_name = userForm.role_name.trim();
+      try {
+        const data = await handleApiCall('userUpdate', updateUser, selectedUserId, payload);
+        setUserResult(data);
+        setUsers((current) => current.map((u) => (String(u.id) === String(selectedUserId) ? data : u)));
+      } catch (error) {
+        // Error is handled by handleApiCall
+      }
+    },
+    [handleApiCall, selectedUserId, userForm],
+  );
 
-    try {
-      const data = await updateUser(selectedUserId, payload);
-      setUserResult(data);
-      setStatus('Usuario actualizado.');
-      setUsers((currentUsers) => currentUsers.map((user) => (String(user.id) === String(selectedUserId) ? data : user)));
-    } catch (requestError) {
-      setError(requestError?.response?.data?.detail ?? 'No se pudo actualizar el usuario.');
-    } finally {
-      setIsSaving(false);
-    }
-  };
-
-  const handleUpdateRolePermisos = async () => {
+  const handleUpdateRolePermisos = useCallback(async () => {
     if (!selectedRoleId) {
-      setError('Ingresa un ID de rol.');
+      setRequestState('roleUpdate', false, 'Ingresa un ID de rol.', null);
       return;
     }
-
-    setIsSaving(true);
-    setError('');
-    setStatus('');
 
     try {
       const permisos = JSON.parse(rolePermisosInput);
-      await updateRolePermisos(selectedRoleId, permisos);
-      setStatus('Permisos del rol actualizados.');
-    } catch (requestError) {
-      if (requestError instanceof SyntaxError) {
-        setError('El JSON de permisos no es válido.');
-      } else {
-        setError(requestError?.response?.data?.detail ?? 'No se pudieron actualizar los permisos del rol.');
+      await handleApiCall('roleUpdate', updateRolePermisos, selectedRoleId, permisos);
+      handleLoadRoles(); // Refresh roles list
+    } catch (error) {
+      if (error instanceof SyntaxError) {
+        setRequestState('roleUpdate', false, 'El JSON de permisos no es válido.', null);
       }
-    } finally {
-      setIsSaving(false);
+      // Other errors handled by handleApiCall
     }
-  };
+  }, [handleApiCall, selectedRoleId, rolePermisosInput, handleLoadRoles]);
 
-  const handleLoadAudit = async () => {
-    setError('');
-    setStatus('');
+  const handleLoadAudit = useCallback(async () => {
     try {
-      setAuditLog(await listRoleAuditLog());
-      setStatus('Auditoría cargada.');
-    } catch (requestError) {
-      setError(requestError?.response?.data?.detail ?? 'No se pudo cargar la auditoría.');
+      const loadedAudit = await handleApiCall('audit', listRoleAuditLog);
+      setAuditLog(loadedAudit);
+    } catch (error) {
+      // Error is handled by handleApiCall
     }
-  };
+  }, [handleApiCall]);
+
+  const isLoading = Object.values(requests).some((r) => r.loading);
 
   return (
     <section className="panel-card">
@@ -166,185 +182,175 @@ export function AdminTab({ authSession }) {
 
       {!canAdmin ? <p className="form-error">Este módulo requiere rol admin o permiso admin.</p> : null}
 
-      <nav className="section-nav" aria-label="Secciones de administración">
-        {adminSections.map((section) => (
-          <button
-            key={section.id}
-            type="button"
-            className={`section-nav-link${activeSection === section.id ? ' is-active' : ''}`}
-            onClick={() => setActiveSection(section.id)}
-          >
-            {section.label}
-          </button>
-        ))}
-      </nav>
-
-      {activeSection === 'usuarios' ? (
-        <div className="action-card admin-section-card">
-          <h3>Usuarios</h3>
-          <p className="profile-note-copy">Consulta, edita y actualiza usuarios desde esta sección.</p>
-          <div className="button-row">
-            <button type="button" className="primary-button" onClick={handleLoadUsers} disabled={!canAdmin || isSaving}>
-              Cargar usuarios
-            </button>
-            <button type="button" className="ghost-button" onClick={handleLoadUser} disabled={!canAdmin || isSaving}>
-              Cargar usuario
-            </button>
-          </div>
-          <label>
-            ID de usuario
-            <input
-              type="number"
-              value={selectedUserId}
-              onChange={(event) => setSelectedUserId(event.target.value)}
-              placeholder="12"
-            />
-          </label>
-          <form className="form-grid admin-user-form" onSubmit={handleUpdateUser}>
-            <label>
-              Nombre
-              <input
-                type="text"
-                value={userForm.nombre}
-                onChange={(event) => setUserForm((current) => ({ ...current, nombre: event.target.value }))}
-              />
-            </label>
-            <label>
-              Correo
-              <input
-                type="email"
-                value={userForm.email}
-                onChange={(event) => setUserForm((current) => ({ ...current, email: event.target.value }))}
-              />
-            </label>
-            <label>
-              Rol
-              <select
-                value={userForm.role_id}
-                onChange={(event) => {
-                  const nextRoleId = event.target.value;
-                  const selectedRole = roles.find((role) => String(role.id) === String(nextRoleId));
-
-                  setUserForm((current) => ({
-                    ...current,
-                    role_id: nextRoleId,
-                    role_name: selectedRole?.nombre ?? current.role_name,
-                  }));
-                }}
-                disabled={roles.length === 0}
+      {canAdmin && (
+        <>
+          <nav className="section-nav" aria-label="Secciones de administración">
+            {adminSections.map((section) => (
+              <button
+                key={section.id}
+                type="button"
+                className={`section-nav-link${activeSection === section.id ? ' is-active' : ''}`}
+                onClick={() => setActiveSection(section.id)}
+                disabled={isLoading}
               >
-                <option value="">Selecciona un rol</option>
-                {roles.map((role) => (
-                  <option key={role.id} value={role.id}>
-                    {role.nombre} · ID {role.id}
-                  </option>
-                ))}
-              </select>
-              {roles.length === 0 ? <small>Primero carga los roles para poder elegir uno.</small> : null}
-            </label>
-            <label>
-              Role name
-              <input
-                type="text"
-                value={userForm.role_name}
-                onChange={(event) => setUserForm((current) => ({ ...current, role_name: event.target.value }))}
-              />
-            </label>
-            <button type="submit" className="primary-button span-2" disabled={!canAdmin || isSaving}>
-              Actualizar usuario
-            </button>
-          </form>
+                {section.label}
+              </button>
+            ))}
+          </nav>
 
-          {userResult ? <pre className="json-box">{JSON.stringify(userResult, null, 2)}</pre> : null}
+          {activeSection === 'usuarios' && (
+            <div className="action-card admin-section-card">
+              <h3>Usuarios</h3>
+              <p className="profile-note-copy">Consulta, edita y actualiza usuarios desde esta sección.</p>
+              <div className="button-row">
+                <button type="button" className="primary-button" onClick={handleLoadUsers} disabled={requests.users.loading}>
+                  {requests.users.loading ? 'Cargando...' : 'Cargar usuarios'}
+                </button>
+              </div>
+              {requests.users.error && <p className="form-error">{requests.users.error}</p>}
+              {users.length > 0 && (
+                <div className="list-stack">
+                  {users.map((user) => (
+                    <article key={user.id} className="list-card">
+                      <strong>{user.nombre}</strong>
+                      <span>{user.email}</span>
+                      <small>{user.role_name} · ID {user.id}</small>
+                    </article>
+                  ))}
+                </div>
+              )}
 
-          {users.length > 0 ? (
-            <div className="list-stack">
-              {users.map((user) => (
-                <article key={user.id} className="list-card">
-                  <strong>{user.nombre}</strong>
-                  <span>{user.email}</span>
-                  <small>{user.role_name} · ID {user.id}</small>
-                </article>
-              ))}
+              <hr />
+
+              <h4>Editar Usuario</h4>
+              <label>
+                ID de usuario a editar
+                <input
+                  type="number"
+                  value={selectedUserId}
+                  onChange={(e) => setSelectedUserId(e.target.value)}
+                  placeholder="12"
+                  disabled={requests.user.loading}
+                />
+              </label>
+              <div className="button-row">
+                <button type="button" className="ghost-button" onClick={handleLoadUser} disabled={requests.user.loading}>
+                  {requests.user.loading ? 'Cargando...' : 'Cargar usuario por ID'}
+                </button>
+              </div>
+              {requests.user.error && <p className="form-error">{requests.user.error}</p>}
+
+              {userResult && (
+                <form className="form-grid admin-user-form" onSubmit={handleUpdateUser}>
+                  <label>
+                    Nombre
+                    <input type="text" value={userForm.nombre} onChange={(e) => setUserForm((c) => ({ ...c, nombre: e.target.value }))} />
+                  </label>
+                  <label>
+                    Correo
+                    <input type="email" value={userForm.email} onChange={(e) => setUserForm((c) => ({ ...c, email: e.target.value }))} />
+                  </label>
+                  <label>
+                    Rol
+                    <select
+                      value={userForm.role_id}
+                      onChange={(e) => {
+                        const role = roles.find((r) => String(r.id) === e.target.value);
+                        setUserForm((c) => ({ ...c, role_id: e.target.value, role_name: role?.nombre ?? c.role_name }));
+                      }}
+                      disabled={roles.length === 0}
+                    >
+                      <option value="">Selecciona un rol</option>
+                      {roles.map((role) => (
+                        <option key={role.id} value={role.id}>
+                          {role.nombre} · ID {role.id}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+                  <label>
+                    Role name
+                    <input type="text" value={userForm.role_name} onChange={(e) => setUserForm((c) => ({ ...c, role_name: e.target.value }))} />
+                  </label>
+                  <button type="submit" className="primary-button span-2" disabled={requests.userUpdate.loading}>
+                    {requests.userUpdate.loading ? 'Actualizando...' : 'Actualizar usuario'}
+                  </button>
+                  {requests.userUpdate.error && <p className="form-error span-2">{requests.userUpdate.error}</p>}
+                  {requests.userUpdate.status && <p className="status-copy span-2">{requests.userUpdate.status}</p>}
+                </form>
+              )}
             </div>
-          ) : null}
-        </div>
-      ) : null}
-
-      {activeSection === 'roles' ? (
-        <div className="action-card admin-section-card">
-          <h3>Roles</h3>
-          <p className="profile-note-copy">Actualiza permisos y revisa la configuración por rol.</p>
-          <div className="button-row">
-            <button type="button" className="primary-button" onClick={handleLoadRoles} disabled={!canAdmin || isSaving}>
-              Cargar roles
-            </button>
-          </div>
-          <label>
-            ID de rol
-            <input
-              type="number"
-              value={selectedRoleId}
-              onChange={(event) => setSelectedRoleId(event.target.value)}
-              placeholder="7"
-            />
-          </label>
-          <label>
-            Permisos JSON
-            <textarea
-              rows="4"
-              value={rolePermisosInput}
-              onChange={(event) => setRolePermisosInput(event.target.value)}
-              placeholder='{"upload": true}'
-            />
-          </label>
-          <button type="button" className="primary-button" onClick={handleUpdateRolePermisos} disabled={!canAdmin || isSaving}>
-            Actualizar permisos del rol
-          </button>
-          {roles.length > 0 ? (
-            <div className="list-stack">
-              {roles.map((role) => (
-                <article key={role.id} className="list-card">
-                  <strong>{role.nombre}</strong>
-                  <span>ID {role.id}</span>
-                  <small>{JSON.stringify(role.permisos ?? null)}</small>
-                </article>
-              ))}
-            </div>
-          ) : null}
-        </div>
-      ) : null}
-
-      {activeSection === 'auditoria' ? (
-        <div className="action-card admin-section-card">
-          <h3>Auditoría</h3>
-          <p className="profile-note-copy">Revisa aquí los cambios aplicados sobre roles y permisos.</p>
-          <div className="button-row">
-            <button type="button" className="ghost-button" onClick={handleLoadAudit} disabled={!canAdmin || isSaving}>
-              Cargar auditoría
-            </button>
-          </div>
-          {auditLog.length > 0 ? (
-            <div className="list-stack">
-              {auditLog.map((entry) => (
-                <article key={entry.id} className="list-card">
-                  <strong>{entry.action}</strong>
-                  <span>Usuario destino: {entry.target_user ?? '-'}</span>
-                  <small>
-                    Rol: {entry.role_id ?? '-'} · {entry.created_at}
-                  </small>
-                  {entry.details ? <pre className="json-box">{JSON.stringify(entry.details, null, 2)}</pre> : null}
-                </article>
-              ))}
-            </div>
-          ) : (
-            <p className="profile-note-copy">Carga la auditoría para ver los cambios de roles y permisos.</p>
           )}
-        </div>
-      ) : null}
 
-      {status ? <p className="status-copy">{status}</p> : null}
-      {error ? <p className="form-error">{error}</p> : null}
+          {activeSection === 'roles' && (
+            <div className="action-card admin-section-card">
+              <h3>Roles y Permisos</h3>
+              <p className="profile-note-copy">Actualiza permisos y revisa la configuración por rol.</p>
+              <div className="button-row">
+                <button type="button" className="primary-button" onClick={handleLoadRoles} disabled={requests.roles.loading}>
+                  {requests.roles.loading ? 'Cargando...' : 'Recargar roles'}
+                </button>
+              </div>
+              {requests.roles.error && <p className="form-error">{requests.roles.error}</p>}
+              {roles.length > 0 && (
+                <div className="list-stack">
+                  {roles.map((role) => (
+                    <article key={role.id} className="list-card">
+                      <strong>{role.nombre}</strong>
+                      <span>ID {role.id}</span>
+                      <pre className="json-box">{JSON.stringify(role.permisos ?? {}, null, 2)}</pre>
+                    </article>
+                  ))}
+                </div>
+              )}
+              <hr />
+              <h4>Editar Permisos de Rol</h4>
+              <label>
+                ID de rol a editar
+                <input type="number" value={selectedRoleId} onChange={(e) => setSelectedRoleId(e.target.value)} placeholder="7" />
+              </label>
+              <label>
+                Permisos (en formato JSON)
+                <textarea rows="4" value={rolePermisosInput} onChange={(e) => setRolePermisosInput(e.target.value)} placeholder='{"upload": true}' />
+              </label>
+              <button type="button" className="primary-button" onClick={handleUpdateRolePermisos} disabled={requests.roleUpdate.loading}>
+                {requests.roleUpdate.loading ? 'Actualizando...' : 'Actualizar permisos del rol'}
+              </button>
+              {requests.roleUpdate.error && <p className="form-error">{requests.roleUpdate.error}</p>}
+              {requests.roleUpdate.status && <p className="status-copy">{requests.roleUpdate.status}</p>}
+            </div>
+          )}
+
+          {activeSection === 'auditoria' && (
+            <div className="action-card admin-section-card">
+              <h3>Auditoría de Roles</h3>
+              <p className="profile-note-copy">Revisa aquí los cambios aplicados sobre roles y permisos.</p>
+              <div className="button-row">
+                <button type="button" className="primary-button" onClick={handleLoadAudit} disabled={requests.audit.loading}>
+                  {requests.audit.loading ? 'Cargando...' : 'Cargar auditoría'}
+                </button>
+              </div>
+              {requests.audit.error && <p className="form-error">{requests.audit.error}</p>}
+              {auditLog.length > 0 ? (
+                <div className="list-stack">
+                  {auditLog.map((entry) => (
+                    <article key={entry.id} className="list-card">
+                      <strong>{entry.action}</strong>
+                      <span>Usuario destino: {entry.target_user ?? '-'}</span>
+                      <small>
+                        Rol: {entry.role_id ?? '-'} · {new Date(entry.created_at).toLocaleString()}
+                      </small>
+                      {entry.details && <pre className="json-box">{JSON.stringify(entry.details, null, 2)}</pre>}
+                    </article>
+                  ))}
+                </div>
+              ) : (
+                <p className="profile-note-copy">No hay registros de auditoría o no se han cargado.</p>
+              )}
+            </div>
+          )}
+        </>
+      )}
     </section>
   );
 }

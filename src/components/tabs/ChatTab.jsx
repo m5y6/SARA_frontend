@@ -1,30 +1,34 @@
 import ReactMarkdown from 'react-markdown';
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useState, useCallback } from 'react';
 import axios from 'axios';
 import { askQuestion } from '../../api/assistant';
-import { api } from '../../api/client';
 
-function buildInitialMessages(authSession) {
-  return [
-    {
-      id: 'welcome',
-      role: 'assistant',
-      content: `Hola${authSession?.name ? `, ${authSession.name}` : ''}. Soy SARA. Pregúntame sobre reglamentos, procesos o financiamiento.`,
-      fragmentsUsed: null,
-      fragments: [],
-      model: null,
-    },
-  ];
-}
+const buildInitialMessages = (authSession) => [
+  {
+    id: 'welcome',
+    role: 'assistant',
+    content: `Hola${authSession?.name ? `, ${authSession.name}` : ''}. Soy SARA. Pregúntame sobre reglamentos, procesos o financiamiento.`,
+    fragmentsUsed: null,
+    fragments: [],
+    model: null,
+  },
+];
 
 export function ChatTab({ authSession }) {
   const initialMessages = useMemo(() => buildInitialMessages(authSession), [authSession]);
   const [messages, setMessages] = useState(initialMessages);
   const [message, setMessage] = useState('');
-  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState('');
   const [sesionId, setSesionId] = useState(null);
   const [runningRequestCtrl, setRunningRequestCtrl] = useState(null);
+
+  const handleNewChat = useCallback(() => {
+    runningRequestCtrl?.abort();
+    setRunningRequestCtrl(null);
+    setSesionId(null);
+    setMessages(buildInitialMessages(authSession));
+  }, [authSession, runningRequestCtrl]);
 
   useEffect(() => {
     setMessages(buildInitialMessages(authSession));
@@ -32,13 +36,6 @@ export function ChatTab({ authSession }) {
       runningRequestCtrl?.abort();
     };
   }, [authSession]);
-
-  const handleNewChat = () => {
-    runningRequestCtrl?.abort();
-    setRunningRequestCtrl(null);
-    setSesionId(null);
-    setMessages(buildInitialMessages(authSession));
-  };
 
   const handleCancel = () => {
     if (!runningRequestCtrl) {
@@ -51,12 +48,12 @@ export function ChatTab({ authSession }) {
   const handleSubmit = async (event) => {
     event.preventDefault();
     const trimmedMessage = message.trim();
-    if (!trimmedMessage) {
+    if (!trimmedMessage || isLoading) {
       return;
     }
 
     setError('');
-    setIsSubmitting(true);
+    setIsLoading(true);
     const ctrl = new AbortController();
     setRunningRequestCtrl(ctrl);
 
@@ -101,14 +98,17 @@ export function ChatTab({ authSession }) {
           currentMessages.filter((msg) => msg.id !== userMessage.id && msg.id !== loadingMessage.id),
         );
       } else {
-        setError(requestError?.response?.data?.detail ?? 'No se pudo consultar el backend.');
+        const errorMessage = requestError?.response?.data?.detail ?? 'No se pudo conectar con el backend. Inténtalo de nuevo más tarde.';
+        setError(errorMessage);
         setMessages((currentMessages) => currentMessages.filter((msg) => msg.id !== loadingMessage.id));
       }
     } finally {
-      setIsSubmitting(false);
+      setIsLoading(false);
       setRunningRequestCtrl(null);
     }
   };
+
+  const isSendDisabled = isLoading || message.trim().length === 0;
 
   return (
     <section className="panel-card panel-chat">
@@ -123,15 +123,15 @@ export function ChatTab({ authSession }) {
       <div className="chat-layout">
         <div className="chat-window">
           <div className="chat-messages">
-            {messages.map((message) => (
-              <article key={message.id} className={`chat-bubble ${message.role} ${message.is_loading ? 'is-loading' : ''}`}>
-                {message.is_loading ? <div className="spinner" /> : <div className="chat-message-content"><ReactMarkdown>{message.content}</ReactMarkdown></div>}
-                {message.role === 'assistant' && message.fragments?.length > 0 ? (
+            {messages.map((msg) => (
+              <article key={msg.id} className={`chat-bubble ${msg.role} ${msg.is_loading ? 'is-loading' : ''}`}>
+                {msg.is_loading ? <div className="spinner" /> : <div className="chat-message-content"><ReactMarkdown>{msg.content}</ReactMarkdown></div>}
+                {msg.role === 'assistant' && msg.fragments?.length > 0 ? (
                   <div className="chat-source-list">
                     <span className="chat-meta">
-                      {message.fragmentsUsed ?? message.fragments.length} fragmentos usados{message.model ? ` • ${message.model}` : ''}
+                      {msg.fragmentsUsed ?? msg.fragments.length} fragmentos usados{msg.model ? ` • ${msg.model}` : ''}
                     </span>
-                    {message.fragments.map((fragment) => (
+                    {msg.fragments.map((fragment) => (
                       <div key={fragment.id} className="chat-source-item">
                         <strong>{fragment.metadata?.titulo ?? 'Fragmento'}</strong>
                         <span>{fragment.contenido}</span>
@@ -153,27 +153,27 @@ export function ChatTab({ authSession }) {
                 value={message}
                 onChange={(event) => setMessage(event.target.value)}
                 onKeyDown={(event) => {
-                  if (event.key === 'Enter' && !event.shiftKey) {
+                  if (event.key === 'Enter' && !event.shiftKey && !isSendDisabled) {
                     event.preventDefault();
                     handleSubmit(event);
                   }
                 }}
-                disabled={isSubmitting}
+                disabled={isLoading}
               />
             </label>
 
             {error ? <p className="form-error">{error}</p> : null}
 
             <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '1rem' }}>
-              <button type="button" className="secondary-button" onClick={handleNewChat} disabled={isSubmitting}>
+              <button type="button" className="secondary-button" onClick={handleNewChat} disabled={isLoading}>
                 Nueva Conversación
               </button>
-              {isSubmitting ? (
+              {isLoading ? (
                 <button type="button" className="primary-button" onClick={handleCancel}>
-                  ■
+                  ■ Cancelar
                 </button>
               ) : (
-                <button type="submit" className="primary-button" disabled={isSubmitting}>
+                <button type="submit" className="primary-button" disabled={isSendDisabled}>
                   Enviar pregunta
                 </button>
               )}
