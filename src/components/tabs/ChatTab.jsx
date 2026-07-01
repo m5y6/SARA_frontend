@@ -14,6 +14,8 @@ const buildInitialMessages = (authSession) => [
   },
 ];
 
+const generateFallbackUUID = () => `msg-${Date.now()}-${Math.random().toString(36).substring(2, 9)}`;
+
 export function ChatTab({ authSession }) {
   const initialMessages = useMemo(() => buildInitialMessages(authSession), [authSession]);
   const [messages, setMessages] = useState(initialMessages);
@@ -58,12 +60,12 @@ export function ChatTab({ authSession }) {
     setRunningRequestCtrl(ctrl);
 
     const userMessage = {
-      id: crypto.randomUUID(),
+      id: generateFallbackUUID(),
       role: 'user',
       content: trimmedMessage,
     };
     const loadingMessage = {
-      id: crypto.randomUUID(),
+      id: generateFallbackUUID(),
       role: 'assistant',
       is_loading: true,
     };
@@ -84,7 +86,7 @@ export function ChatTab({ authSession }) {
       setMessages((currentMessages) => [
         ...currentMessages.filter((msg) => msg.id !== loadingMessage.id),
         {
-          id: crypto.randomUUID(),
+          id: generateFallbackUUID(),
           role: 'assistant',
           content: data.answer,
           fragmentsUsed: data.fragments_used,
