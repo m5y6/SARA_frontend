@@ -150,8 +150,8 @@ export function AdminTab({ authSession }) {
       const payload = {
         email: formData.email,
         password: formData.password,
-        nombre: formData.nombre || undefined,
-        role_id: formData.role_id ? Number(formData.role_id) : undefined,
+        nombre: formData.nombre || "", // Mandar string vacío si no hay nombre
+        rol_id: formData.role_id ? Number(formData.role_id) : null, // Cambiado a rol_id y usando null 🔥
       };
 
       try {
