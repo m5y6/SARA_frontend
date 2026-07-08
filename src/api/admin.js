@@ -25,6 +25,12 @@ export async function updateRolePermisos(roleId, permisos) {
   return data;
 }
 
+
+export async function createUser(payload) {
+  const { data } = await api.post('/admin/users', payload);
+  return data;
+}
+
 export async function listRoleAuditLog() {
   const { data } = await api.get('/admin/roles/audit');
   return data;

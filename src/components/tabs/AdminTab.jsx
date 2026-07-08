@@ -1,5 +1,6 @@
 import { useEffect, useState, useCallback } from 'react';
 import {
+  createUser,
   getUserById,
   listRoleAuditLog,
   listRoles,
@@ -7,6 +8,7 @@ import {
   updateRolePermisos,
   updateUser,
 } from '../../api/admin';
+import { CreateUserForm } from './CreateUserForm';
 import { isAdminSession } from '../../lib/permissions';
 
 const emptyUserForm = {
@@ -32,6 +34,7 @@ const initialComponentState = {
   users: { ...initialRequestState },
   user: { ...initialRequestState },
   userUpdate: { ...initialRequestState },
+  userCreate: { ...initialRequestState },
   roles: { ...initialRequestState },
   roleUpdate: { ...initialRequestState },
   audit: { ...initialRequestState },
@@ -40,6 +43,7 @@ const initialComponentState = {
 export function AdminTab({ authSession }) {
   const canAdmin = isAdminSession(authSession);
   const [activeSection, setActiveSection] = useState('usuarios');
+  const [showCreateForm, setShowCreateForm] = useState(false);
 
   const [roles, setRoles] = useState([]);
   const [users, setUsers] = useState([]);
@@ -141,6 +145,26 @@ export function AdminTab({ authSession }) {
     [handleApiCall, selectedUserId, userForm],
   );
 
+  const handleCreateUser = useCallback(
+    async (formData) => {
+      const payload = {
+        email: formData.email,
+        password: formData.password,
+        nombre: formData.nombre || undefined,
+        role_id: formData.role_id ? Number(formData.role_id) : undefined,
+      };
+
+      try {
+        const newUser = await handleApiCall('userCreate', createUser, payload);
+        setUsers((current) => [...current, newUser]);
+        setShowCreateForm(false);
+      } catch (error) {
+        // Error is handled by handleApiCall
+      }
+    },
+    [handleApiCall],
+  );
+
   const handleUpdateRolePermisos = useCallback(async () => {
     if (!selectedRoleId) {
       setRequestState('roleUpdate', false, 'Ingresa un ID de rol.', null);
@@ -218,6 +242,30 @@ export function AdminTab({ authSession }) {
                     </article>
                   ))}
                 </div>
+              )}
+
+              <hr />
+
+              <h4>Crear Usuario</h4>
+              <div className="button-row">
+                <button
+                  type="button"
+                  className="primary-button"
+                  onClick={() => setShowCreateForm(!showCreateForm)}
+                  disabled={requests.userCreate.loading}
+                >
+                  {showCreateForm ? 'Cancelar' : 'Crear nuevo usuario'}
+                </button>
+              </div>
+
+              {showCreateForm && (
+                <CreateUserForm
+                  roles={roles}
+                  onCreateUser={handleCreateUser}
+                  isLoading={requests.userCreate.loading}
+                  error={requests.userCreate.error}
+                  successMessage={requests.userCreate.status}
+                />
               )}
 
               <hr />
