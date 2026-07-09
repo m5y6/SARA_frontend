@@ -76,6 +76,84 @@ function buildS3FileName(baseName) {
   return `${normalizedBaseName}.txt`;
 }
 
+// ---------------------------------------------------------------------------
+// Presentational helpers (consistentes con AdminTab)
+// ---------------------------------------------------------------------------
+
+const inputClass =
+  'w-full rounded-md border border-ink-600 bg-ink-900 px-3.5 py-2.5 text-sm text-gray-100 outline-none transition-colors placeholder:text-gray-500 focus:border-brand-yellow/50 focus:ring-2 focus:ring-brand-yellow/30 disabled:opacity-50';
+
+function Card({ title, description, actions, children }) {
+  return (
+    <div className="rounded-lg bg-ink-700 p-4 sm:p-5">
+      {(title || actions) && (
+        <div className="mb-4 flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+          <div>
+            {title && <h3 className="m-0 text-sm font-semibold uppercase tracking-wide text-gray-200">{title}</h3>}
+            {description && <p className="mt-1 text-sm text-gray-400">{description}</p>}
+          </div>
+          {actions && <div className="flex flex-shrink-0 flex-wrap gap-2">{actions}</div>}
+        </div>
+      )}
+      {children}
+    </div>
+  );
+}
+
+function StatusMessage({ error, status }) {
+  if (!error && !status) return null;
+  if (error) {
+    return <p className="m-0 mt-3 rounded-md bg-red-950/40 px-3.5 py-2.5 text-sm text-red-300">{error}</p>;
+  }
+  return <p className="m-0 mt-3 rounded-md bg-emerald-950/30 px-3.5 py-2.5 text-sm text-emerald-300">{status}</p>;
+}
+
+function EmptyState({ children }) {
+  return (
+    <div className="rounded-md border border-dashed border-ink-600 px-4 py-8 text-center text-sm text-gray-500">
+      {children}
+    </div>
+  );
+}
+
+function PrimaryButton({ children, className = '', ...props }) {
+  return (
+    <button
+      type="button"
+      className={`inline-flex items-center gap-2 whitespace-nowrap rounded-md bg-brand-blue px-4 py-2.5 text-xs font-semibold text-white transition-colors hover:bg-brand-blue-dark disabled:cursor-not-allowed disabled:opacity-50 ${className}`}
+      {...props}
+    >
+      {children}
+    </button>
+  );
+}
+
+function SecondaryButton({ children, className = '', ...props }) {
+  return (
+    <button
+      type="button"
+      className={`inline-flex items-center gap-2 whitespace-nowrap rounded-md bg-ink-600 px-3.5 py-2 text-xs font-semibold text-gray-100 transition-colors hover:bg-ink-500 disabled:cursor-not-allowed disabled:opacity-50 ${className}`}
+      {...props}
+    >
+      {children}
+    </button>
+  );
+}
+
+function FieldLabel({ label, hint, children }) {
+  return (
+    <label className="grid gap-1.5 text-sm font-medium text-gray-300">
+      {label}
+      {children}
+      {hint && <span className="text-xs font-normal text-gray-500">{hint}</span>}
+    </label>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Main component
+// ---------------------------------------------------------------------------
+
 export function UploadTab({ authSession }) {
   const [selectedFile, setSelectedFile] = useState(null);
   const [fileName, setFileName] = useState('documento');
@@ -178,89 +256,137 @@ export function UploadTab({ authSession }) {
     }
   };
 
+  const previewS3Key = `documents/${buildS3FileName(fileName || 'documento')}`;
+
   return (
-    <section className="panel-card">
-      <header className="panel-head">
+    <section className="rounded-lg bg-ink-800 p-4 shadow-md shadow-black/20 sm:p-5">
+      <header className="mb-5 flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
         <div>
-          <p className="panel-kicker">Gestión de Documentos</p>
-          <h2>Sube y administra documentos en S3</h2>
+          <p className="mb-1.5 text-xs font-semibold uppercase tracking-[0.1em] text-brand-yellow">Gestión de documentos</p>
+          <h2 className="m-0 text-lg font-semibold text-white">Sube y administra documentos en S3</h2>
         </div>
-        <div className={`status-pill${canUpload ? ' is-success' : ''}`}>{canUpload ? 'Permiso habilitado' : 'Requiere upload/admin'}</div>
+
       </header>
 
-      <form className="upload-panel" onSubmit={handleSubmit}>
-        {!canUpload ? <p className="form-error">Este endpoint requiere rol admin o permiso upload.</p> : null}
-
-        <label>
-          Documento
-          <input
-            type="file"
-            accept=".txt,.pdf,.docx,application/pdf,application/vnd.openxmlformats-officedocument.wordprocessingml.document"
-            onChange={(event) => setSelectedFile(event.target.files?.[0] ?? null)}
-          />
-        </label>
-
-        <label>
-          Nombre original
-          <input
-            type="text"
-            value={fileName}
-            onChange={(event) => setFileName(stripTxtExtension(event.target.value))}
-            placeholder="reglamento-2026"
-          />
-          <small>Se guardará automáticamente como .txt en S3.</small>
-        </label>
-
-        {error ? <p className="form-error span-2">{error}</p> : null}
-
-        <button type="submit" className="primary-button span-2" disabled={isSubmitting || !canUpload}>
-          {isSubmitting ? 'Subiendo...' : 'Subir Documento'}
-        </button>
-      </form>
-
-      {result ? (
-        <div className="result-card">
-          <h3>Resultado</h3>
-          <p>Archivo: {result.file_name}</p>
-          <p>S3 key: {result.s3_key}</p>
-          <p>Bucket: {result.bucket_name}</p>
-          <p>Longitud original: {result.original_length}</p>
-          <p>Longitud normalizada: {result.normalized_length}</p>
+      {!canUpload ? (
+        <div className="rounded-lg border border-red-900/40 bg-red-950/30 p-5">
+          <p className="m-0 text-sm font-semibold text-red-300">Acceso restringido</p>
+          <p className="mt-1.5 text-sm text-red-300/80">
+            Este módulo requiere rol admin o el permiso{' '}
+            <code className="rounded bg-red-950/60 px-1.5 py-0.5 font-mono text-xs">upload</code> para poder verse.
+          </p>
         </div>
-      ) : null}
+      ) : (
+        <div className="grid gap-4">
+          <Card title="Subir documento" description="Los archivos se normalizan y se guardan como .txt en el bucket.">
+            <form className="grid gap-3.5 sm:grid-cols-2" onSubmit={handleSubmit}>
+              <FieldLabel label="Documento" hint="Formatos aceptados: .txt, .pdf, .docx">
+                <input
+                  className={`${inputClass} file:mr-3 file:rounded-md file:border-0 file:bg-ink-700 file:px-3 file:py-1.5 file:text-xs file:font-medium file:text-gray-100 hover:file:bg-ink-600`}
+                  type="file"
+                  accept=".txt,.pdf,.docx,application/pdf,application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+                  onChange={(event) => setSelectedFile(event.target.files?.[0] ?? null)}
+                />
+                {selectedFile && (
+                  <span className="text-xs text-gray-500">
+                    Seleccionado: {selectedFile.name} · {formatFileSize(selectedFile.size)}
+                  </span>
+                )}
+              </FieldLabel>
 
-      <div className="result-card">
-        <h3>Documentos cargados</h3>
-        {documentError ? <p className="form-error">{documentError}</p> : null}
-        {isLoadingDocuments ? <p className="status-copy">Cargando documentos...</p> : null}
-        {!isLoadingDocuments && documents.length === 0 ? <p className="status-copy">No hay documentos cargados.</p> : null}
+              <FieldLabel label="Nombre base" hint={`Se guardará como: ${previewS3Key}`}>
+                <input
+                  className={inputClass}
+                  type="text"
+                  value={fileName}
+                  onChange={(event) => setFileName(stripTxtExtension(event.target.value))}
+                  placeholder="reglamento-2026"
+                />
+              </FieldLabel>
 
-        <div className="list-stack">
-          {documents.map((documentItem) => (
-            <div key={documentItem.s3_key} className="list-card">
-              <strong>{documentItem.file_name}</strong>
-              <span>{documentItem.s3_key}</span>
-              {(documentItem.size || documentItem.last_modified) && (
-                <small>
-                  {documentItem.size ? `Tamaño: ${formatFileSize(documentItem.size)}` : null}
-                  {documentItem.size && documentItem.last_modified ? ' · ' : null}
-                  {documentItem.last_modified ? `Actualizado: ${formatLastModified(documentItem.last_modified)}` : null}
-                </small>
-              )}
-              <div className="button-row">
-                <button
-                  type="button"
-                  className="ghost-button"
-                  onClick={() => handleDelete(documentItem)}
-                  disabled={deletingKey === documentItem.s3_key}
-                >
-                  {deletingKey === documentItem.s3_key ? 'Eliminando...' : 'Eliminar'}
-                </button>
+              <div className="sm:col-span-2">
+                <PrimaryButton type="submit" disabled={isSubmitting}>
+                  {isSubmitting ? 'Subiendo...' : 'Subir documento'}
+                </PrimaryButton>
               </div>
-            </div>
-          ))}
+              <div className="sm:col-span-2">
+                <StatusMessage error={error} />
+              </div>
+            </form>
+
+            {result && (
+              <div className="mt-4 grid gap-x-4 gap-y-2 border-t border-ink-600 pt-4 text-sm sm:grid-cols-[140px_1fr]">
+                <p className="m-0 font-semibold text-emerald-300 sm:col-span-2">Documento subido correctamente</p>
+                <span className="text-gray-500">Archivo</span>
+                <span className="text-gray-200">{result.file_name}</span>
+                <span className="text-gray-500">S3 key</span>
+                <span className="break-all font-mono text-xs text-gray-200">{result.s3_key}</span>
+                <span className="text-gray-500">Bucket</span>
+                <span className="text-gray-200">{result.bucket_name}</span>
+                <span className="text-gray-500">Longitud original</span>
+                <span className="text-gray-200">{result.original_length}</span>
+                <span className="text-gray-500">Longitud normalizada</span>
+                <span className="text-gray-200">{result.normalized_length}</span>
+              </div>
+            )}
+          </Card>
+
+          <Card
+            title="Documentos cargados"
+            description={
+              documents.length > 0
+                ? `${documents.length} documento${documents.length === 1 ? '' : 's'} en el bucket.`
+                : 'Aún no hay documentos cargados.'
+            }
+            actions={
+              <SecondaryButton onClick={loadDocuments} disabled={isLoadingDocuments}>
+                {isLoadingDocuments ? 'Cargando...' : 'Recargar lista'}
+              </SecondaryButton>
+            }
+          >
+            <StatusMessage error={documentError} />
+
+            {documents.length > 0 ? (
+              <div className="overflow-x-auto rounded-md border border-ink-600">
+                <table className="w-full min-w-[560px] border-collapse text-left text-sm">
+                  <thead>
+                    <tr className="bg-ink-900 text-[11px] uppercase tracking-wide text-gray-400">
+                      <th className="px-3.5 py-2.5 font-semibold">Nombre</th>
+                      <th className="px-3.5 py-2.5 font-semibold">S3 key</th>
+                      <th className="px-3.5 py-2.5 font-semibold">Tamaño</th>
+                      <th className="px-3.5 py-2.5 font-semibold">Actualizado</th>
+                      <th className="px-3.5 py-2.5 text-right font-semibold">Acciones</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-ink-600">
+                    {documents.map((documentItem) => (
+                      <tr key={documentItem.s3_key} className="bg-ink-800 transition-colors hover:bg-ink-700/60">
+                        <td className="px-3.5 py-2.5 font-medium text-white">{documentItem.file_name}</td>
+                        <td className="max-w-[220px] truncate px-3.5 py-2.5 font-mono text-xs text-gray-400" title={documentItem.s3_key}>
+                          {documentItem.s3_key}
+                        </td>
+                        <td className="px-3.5 py-2.5 text-gray-400">{formatFileSize(documentItem.size) || '—'}</td>
+                        <td className="px-3.5 py-2.5 text-gray-400">{formatLastModified(documentItem.last_modified) || '—'}</td>
+                        <td className="px-3.5 py-2.5 text-right">
+                          <SecondaryButton
+                            onClick={() => handleDelete(documentItem)}
+                            disabled={deletingKey === documentItem.s3_key}
+                            className="hover:bg-red-500/20 hover:text-red-300"
+                          >
+                            {deletingKey === documentItem.s3_key ? 'Eliminando...' : 'Eliminar'}
+                          </SecondaryButton>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            ) : (
+              !isLoadingDocuments && <EmptyState>Sube tu primer documento con el formulario de arriba.</EmptyState>
+            )}
+          </Card>
         </div>
-      </div>
+      )}
     </section>
   );
 }

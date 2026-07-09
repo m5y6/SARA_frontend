@@ -1,4 +1,4 @@
-import { useEffect, useState, useCallback } from 'react';
+import { Fragment, useCallback, useEffect, useRef, useState } from 'react';
 import {
   createUser,
   getUserById,
@@ -19,9 +19,16 @@ const emptyUserForm = {
 };
 
 const adminSections = [
-  { id: 'usuarios', label: 'Usuarios' },
-  { id: 'roles', label: 'Roles' },
-  { id: 'auditoria', label: 'Auditoría' },
+  {
+    id: 'usuarios',
+    label: 'Usuarios',
+    description: 'Busca cuentas existentes, crea accesos nuevos y edita datos o roles.',
+  },
+  {
+    id: 'auditoria',
+    label: 'Auditoría',
+    description: 'Historial de cambios aplicados sobre roles y permisos.',
+  },
 ];
 
 const initialRequestState = {
@@ -40,6 +47,111 @@ const initialComponentState = {
   audit: { ...initialRequestState },
 };
 
+const inputClass =
+  'w-full rounded-md border border-ink-600 bg-ink-900 px-3.5 py-2.5 text-sm text-gray-100 outline-none transition-colors placeholder:text-gray-500 focus:border-brand-yellow/50 focus:ring-2 focus:ring-brand-yellow/30 disabled:opacity-50';
+
+// ---------------------------------------------------------------------------
+// Presentational helpers
+// ---------------------------------------------------------------------------
+
+function Card({ title, description, actions, children, cardRef }) {
+  return (
+    <div ref={cardRef} className="rounded-lg bg-ink-700 p-4 sm:p-5">
+      {(title || actions) && (
+        <div className="mb-4 flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+          <div>
+            {title && <h3 className="m-0 text-sm font-semibold uppercase tracking-wide text-gray-200">{title}</h3>}
+            {description && <p className="mt-1 text-sm text-gray-400">{description}</p>}
+          </div>
+          {actions && <div className="flex flex-shrink-0 flex-wrap gap-2">{actions}</div>}
+        </div>
+      )}
+      {children}
+    </div>
+  );
+}
+
+function StatusMessage({ error, status }) {
+  if (!error && !status) return null;
+  if (error) {
+    return <p className="m-0 mt-3 rounded-md bg-red-950/40 px-3.5 py-2.5 text-sm text-red-300">{error}</p>;
+  }
+  return <p className="m-0 mt-3 rounded-md bg-emerald-950/30 px-3.5 py-2.5 text-sm text-emerald-300">{status}</p>;
+}
+
+function EmptyState({ children }) {
+  return (
+    <div className="rounded-md border border-dashed border-ink-600 px-4 py-8 text-center text-sm text-gray-500">
+      {children}
+    </div>
+  );
+}
+
+function PrimaryButton({ children, className = '', ...props }) {
+  return (
+    <button
+      type="button"
+      className={`inline-flex items-center gap-2 whitespace-nowrap rounded-md bg-brand-blue px-4 py-2.5 text-xs font-semibold text-white transition-colors hover:bg-brand-blue-dark disabled:cursor-not-allowed disabled:opacity-50 ${className}`}
+      {...props}
+    >
+      {children}
+    </button>
+  );
+}
+
+function SecondaryButton({ children, className = '', ...props }) {
+  return (
+    <button
+      type="button"
+      className={`inline-flex items-center gap-2 whitespace-nowrap rounded-md bg-ink-600 px-3.5 py-2 text-xs font-semibold text-gray-100 transition-colors hover:bg-ink-500 disabled:cursor-not-allowed disabled:opacity-50 ${className}`}
+      {...props}
+    >
+      {children}
+    </button>
+  );
+}
+
+function GhostButton({ children, className = '', ...props }) {
+  return (
+    <button
+      type="button"
+      className={`inline-flex items-center gap-1.5 whitespace-nowrap rounded-md px-2.5 py-1.5 text-xs font-medium text-gray-400 transition-colors hover:bg-ink-600 hover:text-white ${className}`}
+      {...props}
+    >
+      {children}
+    </button>
+  );
+}
+
+function FieldLabel({ label, children }) {
+  return (
+    <label className="grid gap-1.5 text-sm font-medium text-gray-300">
+      {label}
+      {children}
+    </label>
+  );
+}
+
+function Chevron({ open }) {
+  return (
+    <svg viewBox="0 0 20 20" fill="none" className={`h-3.5 w-3.5 flex-shrink-0 transition-transform ${open ? 'rotate-180' : ''}`}>
+      <path d="M5 7.5l5 5 5-5" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" />
+    </svg>
+  );
+}
+
+function JsonBlock({ value }) {
+  return (
+    <pre className="m-0 overflow-auto rounded-md bg-ink-900 p-3.5 font-mono text-xs leading-5 text-gray-300">
+      {JSON.stringify(value ?? {}, null, 2)}
+    </pre>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Main component
+// ---------------------------------------------------------------------------
+
 export function AdminTab({ authSession }) {
   const canAdmin = isAdminSession(authSession);
   const [activeSection, setActiveSection] = useState('usuarios');
@@ -56,7 +168,13 @@ export function AdminTab({ authSession }) {
   const [userForm, setUserForm] = useState(emptyUserForm);
   const [userResult, setUserResult] = useState(null);
 
+  const [expandedRoleIds, setExpandedRoleIds] = useState(() => new Set());
+  const [expandedAuditIds, setExpandedAuditIds] = useState(() => new Set());
+
   const [requests, setRequests] = useState(initialComponentState);
+
+  const editUserCardRef = useRef(null);
+  const editRoleCardRef = useRef(null);
 
   const setRequestState = (req, loading, error, status) => {
     setRequests((prev) => ({ ...prev, [req]: { loading, error, status } }));
@@ -101,24 +219,32 @@ export function AdminTab({ authSession }) {
     }
   }, [handleApiCall]);
 
-  const handleLoadUser = useCallback(async () => {
-    if (!selectedUserId) {
-      setRequestState('user', false, 'Ingresa un ID de usuario.', null);
-      return;
-    }
-    try {
-      const data = await handleApiCall('user', getUserById, selectedUserId);
-      setUserResult(data);
-      setUserForm({
-        nombre: data.nombre ?? '',
-        email: data.email ?? '',
-        role_id: data.rol_id ?? '',
-        role_name: data.role_name ?? '',
-      });
-    } catch (error) {
-      // Error is handled by handleApiCall
-    }
-  }, [handleApiCall, selectedUserId]);
+  const handleLoadUser = useCallback(
+    async (idOverride) => {
+      const targetId = idOverride ?? selectedUserId;
+      if (!targetId) {
+        setRequestState('user', false, 'Ingresa un ID de usuario.', null);
+        return;
+      }
+      try {
+        const data = await handleApiCall('user', getUserById, targetId);
+        setSelectedUserId(String(targetId));
+        setUserResult(data);
+        setUserForm({
+          nombre: data.nombre ?? '',
+          email: data.email ?? '',
+          role_id: data.rol_id ?? '',
+          role_name: data.role_name ?? '',
+        });
+        requestAnimationFrame(() => {
+          editUserCardRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+        });
+      } catch (error) {
+        // Error is handled by handleApiCall
+      }
+    },
+    [handleApiCall, selectedUserId],
+  );
 
   const handleUpdateUser = useCallback(
     async (event) => {
@@ -150,8 +276,8 @@ export function AdminTab({ authSession }) {
       const payload = {
         email: formData.email,
         password: formData.password,
-        nombre: formData.nombre || "", // Mandar string vacío si no hay nombre
-        rol_id: formData.role_id ? Number(formData.role_id) : null, // Cambiado a rol_id y usando null 🔥
+        nombre: formData.nombre || '',
+        rol_id: formData.role_id ? Number(formData.role_id) : null,
       };
 
       try {
@@ -165,6 +291,14 @@ export function AdminTab({ authSession }) {
     [handleApiCall],
   );
 
+  const handleEditRoleShortcut = useCallback((role) => {
+    setSelectedRoleId(String(role.id));
+    setRolePermisosInput(JSON.stringify(role.permisos ?? {}, null, 2));
+    requestAnimationFrame(() => {
+      editRoleCardRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    });
+  }, []);
+
   const handleUpdateRolePermisos = useCallback(async () => {
     if (!selectedRoleId) {
       setRequestState('roleUpdate', false, 'Ingresa un ID de rol.', null);
@@ -174,7 +308,7 @@ export function AdminTab({ authSession }) {
     try {
       const permisos = JSON.parse(rolePermisosInput);
       await handleApiCall('roleUpdate', updateRolePermisos, selectedRoleId, permisos);
-      handleLoadRoles(); // Refresh roles list
+      handleLoadRoles();
     } catch (error) {
       if (error instanceof SyntaxError) {
         setRequestState('roleUpdate', false, 'El JSON de permisos no es válido.', null);
@@ -192,209 +326,396 @@ export function AdminTab({ authSession }) {
     }
   }, [handleApiCall]);
 
+  const toggleRoleExpanded = (id) => {
+    setExpandedRoleIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  };
+
+  const toggleAuditExpanded = (id) => {
+    setExpandedAuditIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  };
+
   const isLoading = Object.values(requests).some((r) => r.loading);
+  const currentSection = adminSections.find((section) => section.id === activeSection);
 
   return (
-    <section className="panel-card">
-      <header className="panel-head">
+    <section className="rounded-lg bg-ink-800 p-4 shadow-md shadow-black/20 sm:p-5">
+      <header className="mb-5 flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
         <div>
-          <p className="panel-kicker">Administración</p>
-          <h2>Usuarios, roles y auditoría</h2>
+          <p className="mb-1 text-xs font-semibold uppercase tracking-[0.1em] text-brand-yellow">Administración</p>
+          <h2 className="m-0 text-lg font-semibold text-white">Usuarios, roles y auditoría</h2>
         </div>
-        <div className={`status-pill${canAdmin ? ' is-success' : ''}`}>{canAdmin ? 'Solo admin' : 'Sin acceso'}</div>
+
       </header>
 
-      {!canAdmin ? <p className="form-error">Este módulo requiere rol admin o permiso admin.</p> : null}
+      {!canAdmin && (
+        <div className="rounded-lg border border-red-900/40 bg-red-950/30 p-5">
+          <p className="m-0 text-sm font-semibold text-red-300">Acceso restringido</p>
+          <p className="mt-1.5 text-sm text-red-300/80">
+            Este módulo requiere rol admin o el permiso{' '}
+            <code className="rounded bg-red-950/60 px-1.5 py-0.5 font-mono text-xs">admin</code> para poder verse.
+          </p>
+        </div>
+      )}
 
       {canAdmin && (
         <>
-          <nav className="section-nav" aria-label="Secciones de administración">
-            {adminSections.map((section) => (
-              <button
-                key={section.id}
-                type="button"
-                className={`section-nav-link${activeSection === section.id ? ' is-active' : ''}`}
-                onClick={() => setActiveSection(section.id)}
-                disabled={isLoading}
-              >
-                {section.label}
-              </button>
-            ))}
+          <nav className="mb-1 flex gap-6 border-b border-ink-600" aria-label="Secciones de administración">
+            {adminSections.map((section) => {
+              const active = activeSection === section.id;
+              return (
+                <button
+                  key={section.id}
+                  type="button"
+                  className={`relative -mb-px border-b-2 px-0.5 pb-3 text-sm font-semibold transition-colors disabled:cursor-not-allowed disabled:opacity-50 ${
+                    active ? 'border-brand-yellow text-white' : 'border-transparent text-gray-400 hover:text-gray-200'
+                  }`}
+                  onClick={() => setActiveSection(section.id)}
+                  disabled={isLoading}
+                >
+                  {section.label}
+                </button>
+              );
+            })}
           </nav>
+          <p className="mb-5 mt-3 text-sm text-gray-400">{currentSection?.description}</p>
 
           {activeSection === 'usuarios' && (
-            <div className="action-card admin-section-card">
-              <h3>Usuarios</h3>
-              <p className="profile-note-copy">Consulta, edita y actualiza usuarios desde esta sección.</p>
-              <div className="button-row">
-                <button type="button" className="primary-button" onClick={handleLoadUsers} disabled={requests.users.loading}>
-                  {requests.users.loading ? 'Cargando...' : 'Cargar usuarios'}
-                </button>
-              </div>
-              {requests.users.error && <p className="form-error">{requests.users.error}</p>}
-              {users.length > 0 && (
-                <div className="list-stack">
-                  {users.map((user) => (
-                    <article key={user.id} className="list-card">
-                      <strong>{user.nombre}</strong>
-                      <span>{user.email}</span>
-                      <small>{user.role_name} · ID {user.id}</small>
-                    </article>
-                  ))}
+            <div className="grid gap-4">
+              <Card
+                title="Usuarios registrados"
+                description={
+                  users.length > 0
+                    ? `${users.length} cuenta${users.length === 1 ? '' : 's'} cargada${users.length === 1 ? '' : 's'}.`
+                    : 'Aún no has cargado la lista de usuarios.'
+                }
+                actions={
+                  <PrimaryButton onClick={handleLoadUsers} disabled={requests.users.loading}>
+                    {requests.users.loading ? 'Cargando...' : 'Cargar usuarios'}
+                  </PrimaryButton>
+                }
+              >
+                <StatusMessage error={requests.users.error} />
+                {users.length > 0 ? (
+                  <div className="overflow-x-auto rounded-md border border-ink-600">
+                    <table className="w-full min-w-[560px] border-collapse text-left text-sm">
+                      <thead>
+                        <tr className="bg-ink-900 text-[11px] uppercase tracking-wide text-gray-400">
+                          <th className="px-3.5 py-2.5 font-semibold">Nombre</th>
+                          <th className="px-3.5 py-2.5 font-semibold">Correo</th>
+                          <th className="px-3.5 py-2.5 font-semibold">Rol</th>
+                          <th className="px-3.5 py-2.5 font-semibold">ID</th>
+                          <th className="px-3.5 py-2.5 text-right font-semibold">Acciones</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-ink-600">
+                        {users.map((user) => (
+                          <tr key={user.id} className="bg-ink-800 transition-colors hover:bg-ink-700/60">
+                            <td className="px-3.5 py-2.5 font-medium text-white">{user.nombre}</td>
+                            <td className="px-3.5 py-2.5 text-gray-300">{user.email}</td>
+                            <td className="px-3.5 py-2.5">
+                              <span className="inline-flex rounded-full bg-ink-700 px-2.5 py-1 text-xs font-medium text-gray-200">
+                                {user.role_name}
+                              </span>
+                            </td>
+                            <td className="px-3.5 py-2.5 text-gray-500">{user.id}</td>
+                            <td className="px-3.5 py-2.5 text-right">
+                              <SecondaryButton onClick={() => handleLoadUser(user.id)} disabled={requests.user.loading}>
+                                Editar
+                              </SecondaryButton>
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                ) : (
+                  !requests.users.loading && <EmptyState>Pulsa "Cargar usuarios" para ver la lista de cuentas.</EmptyState>
+                )}
+              </Card>
+
+              <Card
+                title="Crear usuario"
+                description="Da acceso a un nuevo colaborador asignándole un rol."
+                actions={
+                  <SecondaryButton onClick={() => setShowCreateForm((v) => !v)} disabled={requests.userCreate.loading}>
+                    {showCreateForm ? 'Cancelar' : 'Nuevo usuario'}
+                  </SecondaryButton>
+                }
+              >
+                {showCreateForm ? (
+                  <CreateUserForm
+                    roles={roles}
+                    onCreateUser={handleCreateUser}
+                    isLoading={requests.userCreate.loading}
+                    error={requests.userCreate.error}
+                    successMessage={requests.userCreate.status}
+                  />
+                ) : (
+                  <EmptyState>Pulsa "Nuevo usuario" para completar sus datos y asignarle un rol.</EmptyState>
+                )}
+              </Card>
+
+              <Card
+                cardRef={editUserCardRef}
+                title="Editar usuario"
+                description="Busca una cuenta por su ID para actualizar sus datos o su rol."
+              >
+                <div className="flex flex-wrap items-end gap-2.5">
+                  <div className="min-w-[160px] flex-1">
+                    <FieldLabel label="ID de usuario">
+                      <input
+                        className={inputClass}
+                        type="number"
+                        value={selectedUserId}
+                        onChange={(e) => setSelectedUserId(e.target.value)}
+                        placeholder="12"
+                        disabled={requests.user.loading}
+                      />
+                    </FieldLabel>
+                  </div>
+                  <PrimaryButton onClick={() => handleLoadUser()} disabled={requests.user.loading}>
+                    {requests.user.loading ? 'Buscando...' : 'Buscar'}
+                  </PrimaryButton>
                 </div>
-              )}
+                <StatusMessage error={requests.user.error} />
 
-              <hr />
-
-              <h4>Crear Usuario</h4>
-              <div className="button-row">
-                <button
-                  type="button"
-                  className="primary-button"
-                  onClick={() => setShowCreateForm(!showCreateForm)}
-                  disabled={requests.userCreate.loading}
-                >
-                  {showCreateForm ? 'Cancelar' : 'Crear nuevo usuario'}
-                </button>
-              </div>
-
-              {showCreateForm && (
-                <CreateUserForm
-                  roles={roles}
-                  onCreateUser={handleCreateUser}
-                  isLoading={requests.userCreate.loading}
-                  error={requests.userCreate.error}
-                  successMessage={requests.userCreate.status}
-                />
-              )}
-
-              <hr />
-
-              <h4>Editar Usuario</h4>
-              <label>
-                ID de usuario a editar
-                <input
-                  type="number"
-                  value={selectedUserId}
-                  onChange={(e) => setSelectedUserId(e.target.value)}
-                  placeholder="12"
-                  disabled={requests.user.loading}
-                />
-              </label>
-              <div className="button-row">
-                <button type="button" className="ghost-button" onClick={handleLoadUser} disabled={requests.user.loading}>
-                  {requests.user.loading ? 'Cargando...' : 'Cargar usuario por ID'}
-                </button>
-              </div>
-              {requests.user.error && <p className="form-error">{requests.user.error}</p>}
-
-              {userResult && (
-                <form className="form-grid admin-user-form" onSubmit={handleUpdateUser}>
-                  <label>
-                    Nombre
-                    <input type="text" value={userForm.nombre} onChange={(e) => setUserForm((c) => ({ ...c, nombre: e.target.value }))} />
-                  </label>
-                  <label>
-                    Correo
-                    <input type="email" value={userForm.email} onChange={(e) => setUserForm((c) => ({ ...c, email: e.target.value }))} />
-                  </label>
-                  <label>
-                    Rol
-                    <select
-                      value={userForm.role_id}
-                      onChange={(e) => {
-                        const role = roles.find((r) => String(r.id) === e.target.value);
-                        setUserForm((c) => ({ ...c, role_id: e.target.value, role_name: role?.nombre ?? c.role_name }));
-                      }}
-                      disabled={roles.length === 0}
-                    >
-                      <option value="">Selecciona un rol</option>
-                      {roles.map((role) => (
-                        <option key={role.id} value={role.id}>
-                          {role.nombre} · ID {role.id}
-                        </option>
-                      ))}
-                    </select>
-                  </label>
-                  <label>
-                    Role name
-                    <input type="text" value={userForm.role_name} onChange={(e) => setUserForm((c) => ({ ...c, role_name: e.target.value }))} />
-                  </label>
-                  <button type="submit" className="primary-button span-2" disabled={requests.userUpdate.loading}>
-                    {requests.userUpdate.loading ? 'Actualizando...' : 'Actualizar usuario'}
-                  </button>
-                  {requests.userUpdate.error && <p className="form-error span-2">{requests.userUpdate.error}</p>}
-                  {requests.userUpdate.status && <p className="status-copy span-2">{requests.userUpdate.status}</p>}
-                </form>
-              )}
+                {userResult && (
+                  <form className="mt-5 grid gap-3.5 border-t border-ink-600 pt-5 sm:grid-cols-2" onSubmit={handleUpdateUser}>
+                    <p className="m-0 text-sm text-gray-400 sm:col-span-2">
+                      Editando a <span className="font-semibold text-white">{userResult.nombre}</span> · {userResult.email}
+                    </p>
+                    <FieldLabel label="Nombre">
+                      <input
+                        className={inputClass}
+                        type="text"
+                        value={userForm.nombre}
+                        onChange={(e) => setUserForm((c) => ({ ...c, nombre: e.target.value }))}
+                      />
+                    </FieldLabel>
+                    <FieldLabel label="Correo">
+                      <input
+                        className={inputClass}
+                        type="email"
+                        value={userForm.email}
+                        onChange={(e) => setUserForm((c) => ({ ...c, email: e.target.value }))}
+                      />
+                    </FieldLabel>
+                    <FieldLabel label="Rol">
+                      <select
+                        className={inputClass}
+                        value={userForm.role_id}
+                        onChange={(e) => {
+                          const role = roles.find((r) => String(r.id) === e.target.value);
+                          setUserForm((c) => ({ ...c, role_id: e.target.value, role_name: role?.nombre ?? c.role_name }));
+                        }}
+                        disabled={roles.length === 0}
+                      >
+                        <option value="">Selecciona un rol</option>
+                        {roles.map((role) => (
+                          <option key={role.id} value={role.id}>
+                            {role.nombre} · ID {role.id}
+                          </option>
+                        ))}
+                      </select>
+                    </FieldLabel>
+                    <FieldLabel label="Role name">
+                      <input
+                        className={inputClass}
+                        type="text"
+                        value={userForm.role_name}
+                        onChange={(e) => setUserForm((c) => ({ ...c, role_name: e.target.value }))}
+                      />
+                    </FieldLabel>
+                    <div className="sm:col-span-2">
+                      <PrimaryButton type="submit" disabled={requests.userUpdate.loading}>
+                        {requests.userUpdate.loading ? 'Actualizando...' : 'Actualizar usuario'}
+                      </PrimaryButton>
+                    </div>
+                    <div className="sm:col-span-2">
+                      <StatusMessage error={requests.userUpdate.error} status={requests.userUpdate.status} />
+                    </div>
+                  </form>
+                )}
+              </Card>
             </div>
           )}
 
           {activeSection === 'roles' && (
-            <div className="action-card admin-section-card">
-              <h3>Roles y Permisos</h3>
-              <p className="profile-note-copy">Actualiza permisos y revisa la configuración por rol.</p>
-              <div className="button-row">
-                <button type="button" className="primary-button" onClick={handleLoadRoles} disabled={requests.roles.loading}>
-                  {requests.roles.loading ? 'Cargando...' : 'Recargar roles'}
-                </button>
-              </div>
-              {requests.roles.error && <p className="form-error">{requests.roles.error}</p>}
-              {roles.length > 0 && (
-                <div className="list-stack">
-                  {roles.map((role) => (
-                    <article key={role.id} className="list-card">
-                      <strong>{role.nombre}</strong>
-                      <span>ID {role.id}</span>
-                      <pre className="json-box">{JSON.stringify(role.permisos ?? {}, null, 2)}</pre>
-                    </article>
-                  ))}
+            <div className="grid gap-4">
+              <Card
+                title="Roles configurados"
+                description={
+                  roles.length > 0
+                    ? `${roles.length} rol${roles.length === 1 ? '' : 'es'} definido${roles.length === 1 ? '' : 's'}.`
+                    : 'Aún no has cargado los roles.'
+                }
+                actions={
+                  <PrimaryButton onClick={handleLoadRoles} disabled={requests.roles.loading}>
+                    {requests.roles.loading ? 'Cargando...' : 'Recargar roles'}
+                  </PrimaryButton>
+                }
+              >
+                <StatusMessage error={requests.roles.error} />
+                {roles.length > 0 ? (
+                  <div className="overflow-x-auto rounded-md border border-ink-600">
+                    <table className="w-full min-w-[480px] border-collapse text-left text-sm">
+                      <thead>
+                        <tr className="bg-ink-900 text-[11px] uppercase tracking-wide text-gray-400">
+                          <th className="px-3.5 py-2.5 font-semibold">Nombre</th>
+                          <th className="px-3.5 py-2.5 font-semibold">ID</th>
+                          <th className="px-3.5 py-2.5 font-semibold">Permisos</th>
+                          <th className="px-3.5 py-2.5 text-right font-semibold">Acciones</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-ink-600">
+                        {roles.map((role) => {
+                          const isExpanded = expandedRoleIds.has(role.id);
+                          const permCount = Object.keys(role.permisos ?? {}).length;
+                          return (
+                            <Fragment key={role.id}>
+                              <tr className="bg-ink-800 transition-colors hover:bg-ink-700/60">
+                                <td className="px-3.5 py-2.5 font-medium text-white">{role.nombre}</td>
+                                <td className="px-3.5 py-2.5 text-gray-500">{role.id}</td>
+                                <td className="px-3.5 py-2.5 text-gray-300">
+                                  {permCount} permiso{permCount === 1 ? '' : 's'}
+                                </td>
+                                <td className="px-3.5 py-2.5">
+                                  <div className="flex justify-end gap-1.5">
+                                    <GhostButton onClick={() => toggleRoleExpanded(role.id)}>
+                                      JSON <Chevron open={isExpanded} />
+                                    </GhostButton>
+                                    <SecondaryButton onClick={() => handleEditRoleShortcut(role)}>Editar</SecondaryButton>
+                                  </div>
+                                </td>
+                              </tr>
+                              {isExpanded && (
+                                <tr className="bg-ink-800">
+                                  <td colSpan={4} className="px-3.5 pb-3.5">
+                                    <JsonBlock value={role.permisos} />
+                                  </td>
+                                </tr>
+                              )}
+                            </Fragment>
+                          );
+                        })}
+                      </tbody>
+                    </table>
+                  </div>
+                ) : (
+                  !requests.roles.loading && <EmptyState>Pulsa "Recargar roles" para ver los roles configurados.</EmptyState>
+                )}
+              </Card>
+
+              <Card
+                cardRef={editRoleCardRef}
+                title="Editar permisos de un rol"
+                description="Escribe el ID del rol y su nuevo objeto de permisos en formato JSON."
+              >
+                <div className="grid gap-3.5 sm:grid-cols-[160px_1fr]">
+                  <FieldLabel label="ID de rol">
+                    <input
+                      className={inputClass}
+                      type="number"
+                      value={selectedRoleId}
+                      onChange={(e) => setSelectedRoleId(e.target.value)}
+                      placeholder="7"
+                    />
+                  </FieldLabel>
+                  <FieldLabel label="Permisos (JSON)">
+                    <textarea
+                      className={`${inputClass} resize-y font-mono`}
+                      rows="6"
+                      value={rolePermisosInput}
+                      onChange={(e) => setRolePermisosInput(e.target.value)}
+                      placeholder='{"upload": true}'
+                    />
+                  </FieldLabel>
                 </div>
-              )}
-              <hr />
-              <h4>Editar Permisos de Rol</h4>
-              <label>
-                ID de rol a editar
-                <input type="number" value={selectedRoleId} onChange={(e) => setSelectedRoleId(e.target.value)} placeholder="7" />
-              </label>
-              <label>
-                Permisos (en formato JSON)
-                <textarea rows="4" value={rolePermisosInput} onChange={(e) => setRolePermisosInput(e.target.value)} placeholder='{"upload": true}' />
-              </label>
-              <button type="button" className="primary-button" onClick={handleUpdateRolePermisos} disabled={requests.roleUpdate.loading}>
-                {requests.roleUpdate.loading ? 'Actualizando...' : 'Actualizar permisos del rol'}
-              </button>
-              {requests.roleUpdate.error && <p className="form-error">{requests.roleUpdate.error}</p>}
-              {requests.roleUpdate.status && <p className="status-copy">{requests.roleUpdate.status}</p>}
+                <div className="mt-3.5">
+                  <PrimaryButton onClick={handleUpdateRolePermisos} disabled={requests.roleUpdate.loading}>
+                    {requests.roleUpdate.loading ? 'Actualizando...' : 'Actualizar permisos del rol'}
+                  </PrimaryButton>
+                </div>
+                <StatusMessage error={requests.roleUpdate.error} status={requests.roleUpdate.status} />
+              </Card>
             </div>
           )}
 
           {activeSection === 'auditoria' && (
-            <div className="action-card admin-section-card">
-              <h3>Auditoría de Roles</h3>
-              <p className="profile-note-copy">Revisa aquí los cambios aplicados sobre roles y permisos.</p>
-              <div className="button-row">
-                <button type="button" className="primary-button" onClick={handleLoadAudit} disabled={requests.audit.loading}>
-                  {requests.audit.loading ? 'Cargando...' : 'Cargar auditoría'}
-                </button>
-              </div>
-              {requests.audit.error && <p className="form-error">{requests.audit.error}</p>}
-              {auditLog.length > 0 ? (
-                <div className="list-stack">
-                  {auditLog.map((entry) => (
-                    <article key={entry.id} className="list-card">
-                      <strong>{entry.action}</strong>
-                      <span>Usuario destino: {entry.target_user ?? '-'}</span>
-                      <small>
-                        Rol: {entry.role_id ?? '-'} · {new Date(entry.created_at).toLocaleString()}
-                      </small>
-                      {entry.details && <pre className="json-box">{JSON.stringify(entry.details, null, 2)}</pre>}
-                    </article>
-                  ))}
-                </div>
-              ) : (
-                <p className="profile-note-copy">No hay registros de auditoría o no se han cargado.</p>
-              )}
+            <div className="grid gap-4">
+              <Card
+                title="Historial de auditoría"
+                description={
+                  auditLog.length > 0
+                    ? `${auditLog.length} registro${auditLog.length === 1 ? '' : 's'} cargado${auditLog.length === 1 ? '' : 's'}.`
+                    : 'Aún no has cargado el historial.'
+                }
+                actions={
+                  <PrimaryButton onClick={handleLoadAudit} disabled={requests.audit.loading}>
+                    {requests.audit.loading ? 'Cargando...' : 'Cargar auditoría'}
+                  </PrimaryButton>
+                }
+              >
+                <StatusMessage error={requests.audit.error} />
+                {auditLog.length > 0 ? (
+                  <div className="overflow-x-auto rounded-md border border-ink-600">
+                    <table className="w-full min-w-[600px] border-collapse text-left text-sm">
+                      <thead>
+                        <tr className="bg-ink-900 text-[11px] uppercase tracking-wide text-gray-400">
+                          <th className="px-3.5 py-2.5 font-semibold">Acción</th>
+                          <th className="px-3.5 py-2.5 font-semibold">Usuario destino</th>
+                          <th className="px-3.5 py-2.5 font-semibold">Rol</th>
+                          <th className="px-3.5 py-2.5 font-semibold">Fecha</th>
+                          <th className="px-3.5 py-2.5 text-right font-semibold">Detalle</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-ink-600">
+                        {auditLog.map((entry) => {
+                          const isExpanded = expandedAuditIds.has(entry.id);
+                          return (
+                            <Fragment key={entry.id}>
+                              <tr className="bg-ink-800 transition-colors hover:bg-ink-700/60">
+                                <td className="px-3.5 py-2.5 font-medium text-white">{entry.action}</td>
+                                <td className="px-3.5 py-2.5 text-gray-300">{entry.target_user ?? '—'}</td>
+                                <td className="px-3.5 py-2.5 text-gray-500">{entry.role_id ?? '—'}</td>
+                                <td className="px-3.5 py-2.5 text-gray-500">{new Date(entry.created_at).toLocaleString()}</td>
+                                <td className="px-3.5 py-2.5 text-right">
+                                  {entry.details ? (
+                                    <GhostButton onClick={() => toggleAuditExpanded(entry.id)}>
+                                      Ver <Chevron open={isExpanded} />
+                                    </GhostButton>
+                                  ) : (
+                                    <span className="text-xs text-gray-600">—</span>
+                                  )}
+                                </td>
+                              </tr>
+                              {isExpanded && entry.details && (
+                                <tr className="bg-ink-800">
+                                  <td colSpan={5} className="px-3.5 pb-3.5">
+                                    <JsonBlock value={entry.details} />
+                                  </td>
+                                </tr>
+                              )}
+                            </Fragment>
+                          );
+                        })}
+                      </tbody>
+                    </table>
+                  </div>
+                ) : (
+                  !requests.audit.loading && <EmptyState>Pulsa "Cargar auditoría" para ver el historial de cambios.</EmptyState>
+                )}
+              </Card>
             </div>
           )}
         </>
