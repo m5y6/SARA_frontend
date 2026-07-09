@@ -154,9 +154,6 @@ export function ChatTab({ authSession }) {
                   <span className="text-sm font-semibold text-white">
                     {msg.role === 'assistant' ? 'SARA' : authSession?.name ?? 'Tú'}
                   </span>
-                  {msg.role === 'assistant' && msg.model ? (
-                    <span className="text-[11px] text-gray-400">{msg.model}</span>
-                  ) : null}
                 </div>
 
                 {msg.is_loading ? (
