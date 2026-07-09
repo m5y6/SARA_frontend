@@ -231,7 +231,7 @@ export function UploadTab({ authSession }) {
       setFileName(stripTxtExtension(data?.file_name ?? 'documento.txt'));
       await loadDocuments();
     } catch (requestError) {
-      setError(requestError?.response?.data?.detail ?? 'No se pudo subir el archivo.');
+      setError(requestError?.message ?? requestError?.response?.data?.detail ?? 'No se pudo subir el archivo.');
     } finally {
       setIsSubmitting(false);
     }

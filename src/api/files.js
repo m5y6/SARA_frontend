@@ -5,6 +5,31 @@ export async function uploadFile({ file, fileName }) {
   formData.append('file', file);
   formData.append('file_name', fileName);
 
+  function getFriendlyUploadError(error) {
+    const status = error?.response?.status;
+    const errorDetail = String(error?.response?.data?.detail ?? '').toLowerCase();
+
+    if (status === 413) {
+      return 'Archivo muy pesado. Peso máximo 50 MB.';
+    }
+
+    if (status === 400) {
+      const isImageOnlyDocument =
+        errorDetail.includes('no text could be extracted') ||
+        errorDetail.includes('image') ||
+        errorDetail.includes('imagen') ||
+        errorDetail.includes('scan') ||
+        errorDetail.includes('escaneo') ||
+        errorDetail.includes('ocr');
+
+      if (isImageOnlyDocument) {
+        return 'Error: el PDF o Word contiene solo imágenes. Formato inválido.';
+      }
+    }
+
+    return error?.response?.data?.detail || 'Error al subir el documento al servidor.';
+  }
+
   try {
     const { data } = await api.post('/upload-txt', formData, {
       headers: {
@@ -13,20 +38,7 @@ export async function uploadFile({ file, fileName }) {
     });
     return data;
   } catch (error) {
-    // Si el backend responde con un error 400 (Bad Request)
-    if (error.response && error.response.status === 400) {
-      const errorDetail = error.response.data?.detail || "Hola error";
-
-      // Si el error es el que ya conocemos de los PDFs sin texto
-      if (errorDetail.includes("No text could be extracted")) {
-        throw new Error(
-          "El archivo PDF/Word no contiene texto seleccionable (parece ser una imagen o escaneo). Por favor, sube un documento con texto nativo para poder vectorizar los datos."
-        );
-      }
-    }
-
-    // Si es cualquier otro error, pasamos el mensaje original o uno genérico
-    throw new Error(error.response?.data?.detail, "Error al subir el documento al servidor.");
+    throw new Error(getFriendlyUploadError(error));
   }
 }
 
